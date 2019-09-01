@@ -78,10 +78,11 @@ public class Timer {
         if (prefix != null) {
             // Add the PID to further disambiguate concurrent builds of images with the same name
             String pid = GraalServices.getExecutionID();
-            System.out.format("[%s:%s] %12s: %,10.2f ms\n", prefix, pid, name, time / 1000000d);
-        } else {
-            System.out.format("%12s: %,10.2f ms\n", name, time / 1000000d);
+            System.out.format("[%s:%s] ", prefix, pid);
         }
+        final double heap = Runtime.getRuntime().totalMemory() / 1024.0 / 1024.0 / 1024.0;
+        System.out.format("%12s: %,10.2f ms, %,5.2f GB", name, time / 1000000d, heap);
+        System.out.println();
     }
 
     public void print() {
