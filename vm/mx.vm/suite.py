@@ -53,6 +53,7 @@ suite = {
                 "version": "ac9074beb0ae7df52be2353d3bec788b606e6bea",
                 "dynamic": True,
                 "urls": [
+                    {"url": "https://github.com/shopify/truffleruby-shopify.git", "kind" : "git"},
                 ],
                 "os_arch": {
                     "linux": {
