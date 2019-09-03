@@ -53,6 +53,8 @@ suite = {
                 "version": "ac9074beb0ae7df52be2353d3bec788b606e6bea",
                 "dynamic": True,
                 "urls": [
+                    {"url": "https://github.com/oracle/truffleruby.git", "kind": "git"},
+                    {"url": "https://curio.ssw.jku.at/nexus/content/repositories/snapshots", "kind": "binary"},
                 ],
                 "os_arch": {
                     "linux": {
