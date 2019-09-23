@@ -16,7 +16,7 @@ This means that, unless a significant effort is put together by the LLVM communi
 As most of the statepoint logic is handled at the bitcode level, i.e. at a target-independent stage, this is mostly a matter of emitting the right type of calls to lower the statepoint intrinsics.
 Our AArch64 implementation of statepoints consists of less than 100 lines of code.
 
-_([Implementation of statepoints for AArch64](https://reviews.llvm.org/D66012)_
+_([Implementation of statepoints for AArch64](https://reviews.llvm.org/D66012))_
 
 ## Object file support
 
@@ -25,12 +25,3 @@ This means that Graal needs an understanding of object file relocations for the 
 Emitting the data section with the code as LLVM bitcode is our next priority for the LLVM backend, so this should not be an issue for future targets.
 
 _(see `ELFMachine$ELFAArch64Relocations` for an example)_
-
-## Target-specific lowerings
-
-The Graal compiler currently lowers specific operations into optimized nodes for each target based on the capabilities of that target.
-These optimized nodes are then passed to LLVM which handles them according to its capabilities, usually as intrinsics.
-This is sub-optimal and requires each new target to define its own lowerings, most of which are very similar to the ones existing for other architectures.
-We plan to define LLVM-specific, target-independent lowerings, which will remove this requirement and enable as many LLVM optimizations as possible.
-
-_(We want a `LLVMGraphBuilderPlugins` class similar to the existing `AMD64GraphBuilderPlugins`)_

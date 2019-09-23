@@ -29,14 +29,9 @@
  */
 #include <stdio.h>
 #include <stdint.h>
-#include <unistd.h>
-#include <sys/syscall.h>
+#include "exit.h"
 
 #define ABORT_STATUS 134
-
-#ifndef __linux__
-#define SYS_exit_group 231
-#endif
 
 void __sulong_print_stacktrace();
 int __sulong_should_print_stacktrace_on_abort();
@@ -46,8 +41,8 @@ void abort() {
     fprintf(stderr, "abort()\n\n");
     __sulong_print_stacktrace();
   }
-  syscall(SYS_exit_group, ABORT_STATUS);
+  _EXIT(ABORT_STATUS);
   for (;;) {
-    syscall(SYS_exit_group, ABORT_STATUS);
+    _EXIT(ABORT_STATUS);
   }
 }

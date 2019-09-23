@@ -42,8 +42,6 @@ package com.oracle.truffle.api.impl;
 
 import java.util.List;
 
-import com.oracle.truffle.api.TruffleRuntimeAccess;
-
 /**
  * JDK version independent interface to JDK services used by Truffle.
  */
@@ -62,8 +60,6 @@ public final class TruffleJDKServices {
      * @param loader the loader used to load the classes of the client
      * @param moduleName the name of the module containing the client. This will be {@code null} if
      *            the client is not deployed as a module.
-     *
-     * @since 19.3
      */
     public static void exportTo(ClassLoader loader, String moduleName) {
         throw shouldNotReachHere();
@@ -73,17 +69,26 @@ public final class TruffleJDKServices {
      * Exports all Truffle packages to the module containing {@code client}.
      *
      * @param client class in a module that requires access to Truffle
-     *
-     * @since 19.3
      */
     public static void exportTo(Class<?> client) {
         throw shouldNotReachHere();
     }
 
     /**
-     * Gets the ordered list of loaders for {@link TruffleRuntimeAccess} providers.
+     * Gets the ordered list of loaders for {@link Service} providers.
+     *
+     * @param serviceClass defines service class
      */
-    public static List<Iterable<TruffleRuntimeAccess>> getTruffleRuntimeLoaders() {
+    public static <Service> List<Iterable<Service>> getTruffleRuntimeLoaders(Class<Service> serviceClass) {
+        throw shouldNotReachHere();
+    }
+
+    /**
+     * Ensures that the Truffle module declares a use of {@code service}.
+     *
+     * @param service a class describing a service about to be loaded by Truffle
+     */
+    public static <S> void addUses(Class<S> service) {
         throw shouldNotReachHere();
     }
 }

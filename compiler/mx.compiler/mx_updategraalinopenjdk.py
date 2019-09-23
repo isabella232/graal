@@ -42,6 +42,9 @@ def _read_sibling_file(basename):
         return fp.read()
 
 def _find_version_base_project(versioned_project):
+    base_project_name = getattr(versioned_project, 'overlayTarget', None)
+    if base_project_name:
+        return mx.dependency(base_project_name, context=versioned_project)
     extended_packages = versioned_project.extended_java_packages()
     if not extended_packages:
         mx.abort('Project with a multiReleaseJarVersion attribute must have sources in a package defined by project without multiReleaseJarVersion attribute', context=versioned_project)
@@ -105,8 +108,8 @@ def updategraalinopenjdk(args):
         # JDK module jdk.internal.vm.compiler is composed of sources from:
         GraalJDKModule('jdk.internal.vm.compiler',
             # 1. Classes in the compiler suite under the org.graalvm namespace except for packages
-            #    or projects whose names include "truffle", "management" or "core.llvm"
-            [SuiteJDKInfo('compiler', ['org.graalvm'], ['truffle', 'management', 'core.llvm']),
+            #    or projects whose names include "truffle", "management", "core.llvm" or "replacements.llvm"
+            [SuiteJDKInfo('compiler', ['org.graalvm'], ['truffle', 'management', 'core.llvm', 'replacements.llvm']),
             # 2. Classes in the sdk suite under the org.graalvm.collections and org.graalvm.word namespaces
              SuiteJDKInfo('sdk', ['org.graalvm.collections', 'org.graalvm.word'], [])]),
         # JDK module jdk.internal.vm.compiler.management is composed of sources from:
@@ -179,6 +182,9 @@ def updategraalinopenjdk(args):
             worklist = []
 
             for p in [e for e in suite.projects if e.isJavaProject()]:
+                if str(mx_compiler.jdk.javaCompliance) not in p.javaCompliance:
+                    mx.log('  skipping {} since its compliance ({}) is not compatible with {}'.format(p, repr(p.javaCompliance), mx_compiler.jdk.javaCompliance))
+                    continue
                 if any(inc in p.name for inc in info.includes) and not any(ex in p.name for ex in info.excludes):
                     assert len(p.source_dirs()) == 1, p
                     version = 0
@@ -195,19 +201,20 @@ def updategraalinopenjdk(args):
                         if new_project_name.startswith(old_name):
                             new_project_name = new_project_name.replace(old_name, new_name)
 
-                    source_dir = p.source_dirs()[0]
-                    target_dir = join(classes_dir, new_project_name, 'src')
-                    copied_source_dirs.append(source_dir)
-
-                    workitem = (version, p, source_dir, target_dir)
+                    workitem = (version, p, new_project_name)
                     worklist.append(workitem)
 
             # Ensure versioned resources are copied in the right order
             # such that higher versions override lower versions.
             worklist = sorted(worklist)
 
-            for version, p, source_dir, target_dir in worklist:
+            for version, p, new_project_name in worklist:
                 first_file = True
+
+                source_dir = p.source_dirs()[0]
+                target_dir = join(classes_dir, new_project_name, 'src')
+                copied_source_dirs.append(source_dir)
+
                 for dirpath, _, filenames in os.walk(source_dir):
                     for filename in filenames:
                         src_file = join(dirpath, filename)
@@ -253,12 +260,7 @@ def updategraalinopenjdk(args):
                             mx.log('  copying: ' + source_dir)
                             mx.log('       to: ' + target_dir)
                             if p.testProject or p.definedAnnotationProcessors:
-                                to_exclude = p.name
-                                for old_name, new_name in package_renamings.items():
-                                    if to_exclude.startswith(old_name):
-                                        sfx = '' if to_exclude == old_name else to_exclude[len(old_name):]
-                                        to_exclude = new_name + sfx
-                                        break
+                                to_exclude = new_project_name
                                 jdk_internal_vm_compiler_EXCLUDES.add(to_exclude)
                                 if p.testProject:
                                     jdk_internal_vm_compiler_test_SRC.add(to_exclude)

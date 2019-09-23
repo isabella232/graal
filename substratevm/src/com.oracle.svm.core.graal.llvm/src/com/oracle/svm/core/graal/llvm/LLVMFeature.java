@@ -25,6 +25,7 @@
 package com.oracle.svm.core.graal.llvm;
 
 import static com.oracle.svm.core.SubstrateOptions.CompilerBackend;
+import static com.oracle.svm.core.util.VMError.shouldNotReachHere;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -46,6 +47,8 @@ import org.graalvm.compiler.nodes.java.LoadExceptionObjectNode;
 import org.graalvm.compiler.nodes.spi.LoweringTool;
 import org.graalvm.compiler.options.OptionValues;
 import org.graalvm.compiler.phases.util.Providers;
+import org.graalvm.compiler.replacements.TargetGraphBuilderPlugins;
+import org.graalvm.compiler.replacements.llvm.LLVMGraphBuilderPlugins;
 import org.graalvm.nativeimage.ImageSingletons;
 import org.graalvm.nativeimage.Platform;
 import org.graalvm.nativeimage.Platforms;
@@ -82,6 +85,7 @@ import com.oracle.svm.hosted.meta.HostedMethod;
 public class LLVMFeature implements Feature, GraalFeature {
 
     private static HostedMethod personalityStub;
+    public static HostedMethod retrieveExceptionMethod;
 
     public static final int SPECIAL_REGISTER_COUNT;
     public static final int THREAD_POINTER_INDEX;
@@ -131,12 +135,29 @@ public class LLVMFeature implements Feature, GraalFeature {
                 LLVMPersonalityFunction.raiseException();
             }
         });
+
+        ImageSingletons.add(TargetGraphBuilderPlugins.class, new LLVMGraphBuilderPlugins());
+    }
+
+    @Override
+    public void beforeAnalysis(BeforeAnalysisAccess access) {
+        FeatureImpl.BeforeAnalysisAccessImpl accessImpl = (FeatureImpl.BeforeAnalysisAccessImpl) access;
+        try {
+            accessImpl.registerAsCompiled(LLVMPersonalityFunction.class.getMethod("retrieveException"));
+        } catch (NoSuchMethodException e) {
+            throw shouldNotReachHere();
+        }
     }
 
     @Override
     public void beforeCompilation(BeforeCompilationAccess access) {
         FeatureImpl.BeforeCompilationAccessImpl accessImpl = (FeatureImpl.BeforeCompilationAccessImpl) access;
         personalityStub = accessImpl.getUniverse().lookup(LLVMPersonalityFunction.getPersonalityStub());
+        try {
+            retrieveExceptionMethod = accessImpl.getMetaAccess().lookupJavaMethod(LLVMPersonalityFunction.class.getMethod("retrieveException"));
+        } catch (NoSuchMethodException e) {
+            throw shouldNotReachHere();
+        }
     }
 
     @Override
@@ -170,7 +191,7 @@ public class LLVMFeature implements Feature, GraalFeature {
         }
     }
 
-    private static final int MIN_LLVM_MAJOR_VERSION = 6;
+    private static final int MIN_LLVM_MAJOR_VERSION = 8;
     private static final int MIN_LLVM_MINOR_VERSION = 0;
 
     private static void checkLLVMVersion() {

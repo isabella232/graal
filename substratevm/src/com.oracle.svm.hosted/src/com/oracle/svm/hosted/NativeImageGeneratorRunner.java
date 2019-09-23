@@ -52,6 +52,7 @@ import org.graalvm.nativeimage.c.type.CCharPointerPointer;
 
 import com.oracle.graal.pointsto.infrastructure.SubstitutionProcessor;
 import com.oracle.graal.pointsto.util.AnalysisError;
+import com.oracle.graal.pointsto.util.AnalysisError.ParsingError;
 import com.oracle.graal.pointsto.util.ParallelExecutionException;
 import com.oracle.graal.pointsto.util.Timer;
 import com.oracle.graal.pointsto.util.Timer.StopTimer;
@@ -283,11 +284,14 @@ public class NativeImageGeneratorRunner implements ImageBuildTask {
                     }
 
                     if (javaMainMethod.getReturnType() != void.class) {
-                        throw UserError.abort("Java main method must have return type void. Change the return type of method '" + mainClass.getName() + "." + mainEntryPointName + "(String[])'.");
+                        throw UserError.abort("Java main method '" + mainClass.getName() + "." + mainEntryPointName + "(String[])' does not have the return type 'void'.");
                     }
                     final int mainMethodModifiers = javaMainMethod.getModifiers();
+                    if (!Modifier.isStatic(mainMethodModifiers)) {
+                        throw UserError.abort("Java main method '" + mainClass.getName() + "." + mainEntryPointName + "(String[])' is not static.");
+                    }
                     if (!Modifier.isPublic(mainMethodModifiers)) {
-                        throw UserError.abort("Method '" + mainClass.getName() + "." + mainEntryPointName + "(String[])' is not accessible.  Please make it 'public'.");
+                        throw UserError.abort("Java main method '" + mainClass.getName() + "." + mainEntryPointName + "(String[])' is not public.");
                     }
                     javaMainSupport = new JavaMainSupport(javaMainMethod);
                     mainEntryPoint = JavaMainWrapper.class.getDeclaredMethod("run", int.class, CCharPointerPointer.class);
@@ -322,6 +326,9 @@ public class NativeImageGeneratorRunner implements ImageBuildTask {
         } catch (FallbackFeature.FallbackImageRequest e) {
             reportUserException(e, parsedHostedOptions, NativeImageGeneratorRunner::warn);
             return 2;
+        } catch (ParsingError e) {
+            NativeImageGeneratorRunner.reportFatalError(e);
+            return 1;
         } catch (UserException | AnalysisError e) {
             reportUserError(e, parsedHostedOptions);
             return 1;
@@ -331,7 +338,7 @@ public class NativeImageGeneratorRunner implements ImageBuildTask {
                 if (exception instanceof UserException) {
                     reportUserError(exception, parsedHostedOptions);
                     hasUserError = true;
-                } else if (exception instanceof AnalysisError) {
+                } else if (exception instanceof AnalysisError && !(exception instanceof ParsingError)) {
                     reportUserError(exception, parsedHostedOptions);
                     hasUserError = true;
                 }
@@ -466,6 +473,7 @@ public class NativeImageGeneratorRunner implements ImageBuildTask {
 
         public static void main(String[] args) {
             ModuleSupport.exportAndOpenAllPackagesToUnnamed("org.graalvm.truffle", false);
+            ModuleSupport.exportAndOpenAllPackagesToUnnamed("jdk.internal.vm.ci", false);
             ModuleSupport.exportAndOpenAllPackagesToUnnamed("jdk.internal.vm.compiler", false);
             ModuleSupport.exportAndOpenAllPackagesToUnnamed("com.oracle.graal.graal_enterprise", true);
             NativeImageGeneratorRunner.main(args);

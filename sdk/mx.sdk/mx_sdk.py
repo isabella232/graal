@@ -80,7 +80,9 @@ _suite = mx.suite('sdk')
 
 graalvm_hostvm_configs = [
     ('jvm', [], ['--jvm'], 50),
-    ('native', [], ['--native'], 100)
+    ('jvm-la-inline', [], ['--jvm', '--vm.Dgraal.TruffleLanguageAgnosticInlining=true'], 30),
+    ('native', [], ['--native'], 100),
+    ('native-la-inline', [], ['--native', '--vm.Dgraal.TruffleLanguageAgnosticInlining=true'], 40)
 ]
 
 
@@ -185,12 +187,30 @@ class LibraryConfig(AbstractNativeImageConfig):
 
 
 class GraalVmComponent(object):
-    def __init__(self, suite, name, short_name, license_files, third_party_license_files,
-                 jar_distributions=None, builder_jar_distributions=None, support_distributions=None,
-                 dir_name=None, launcher_configs=None, library_configs=None, provided_executables=None,
-                 polyglot_lib_build_args=None, polyglot_lib_jar_dependencies=None, polyglot_lib_build_dependencies=None,
+    def __init__(self,
+                 suite,
+                 name,
+                 short_name,
+                 license_files,
+                 third_party_license_files,
+                 jar_distributions=None,
+                 builder_jar_distributions=None,
+                 support_distributions=None,
+                 support_headers_distributions=None,
+                 dir_name=None,
+                 launcher_configs=None,
+                 library_configs=None,
+                 provided_executables=None,
+                 polyglot_lib_build_args=None,
+                 polyglot_lib_jar_dependencies=None,
+                 polyglot_lib_build_dependencies=None,
                  has_polyglot_lib_entrypoints=False,
-                 boot_jars=None, priority=None, installable=False, post_install_msg=None, installable_id=None,
+                 boot_jars=None,
+                 jvmci_parent_jars=None,
+                 priority=None,
+                 installable=False,
+                 post_install_msg=None,
+                 installable_id=None,
                  dependencies=None):
         """
         :param suite mx.Suite: the suite this component belongs to
@@ -208,11 +228,13 @@ class GraalVmComponent(object):
         :type polyglot_lib_build_dependencies: list[str]
         :type has_polyglot_lib_entrypoints: bool
         :type boot_jars: list[str]
+        :type jvmci_parent_jars: list[str]
         :type launcher_configs: list[LauncherConfig]
         :type library_configs: list[LibraryConfig]
         :type jar_distributions: list[str]
         :type builder_jar_distributions: list[str]
         :type support_distributions: list[str]
+        :type support_headers_distributions: list[str]
         :param int priority: priority with a higher value means higher priority
         :type installable: bool
         :type installable_id: str
@@ -234,9 +256,11 @@ class GraalVmComponent(object):
         self.polyglot_lib_build_dependencies = polyglot_lib_build_dependencies or []
         self.has_polyglot_lib_entrypoints = has_polyglot_lib_entrypoints
         self.boot_jars = boot_jars or []
+        self.jvmci_parent_jars = jvmci_parent_jars or []
         self.jar_distributions = jar_distributions or []
         self.builder_jar_distributions = builder_jar_distributions or []
         self.support_distributions = support_distributions or []
+        self.support_headers_distributions = support_headers_distributions or []
         self.priority = priority or 0
         self.launcher_configs = launcher_configs or []
         self.library_configs = library_configs or []
@@ -247,6 +271,7 @@ class GraalVmComponent(object):
         assert isinstance(self.jar_distributions, list)
         assert isinstance(self.builder_jar_distributions, list)
         assert isinstance(self.support_distributions, list)
+        assert isinstance(self.support_headers_distributions, list)
         assert isinstance(self.license_files, list)
         assert isinstance(self.third_party_license_files, list)
         assert isinstance(self.provided_executables, list)
@@ -254,6 +279,7 @@ class GraalVmComponent(object):
         assert isinstance(self.polyglot_lib_jar_dependencies, list)
         assert isinstance(self.polyglot_lib_build_dependencies, list)
         assert isinstance(self.boot_jars, list)
+        assert isinstance(self.jvmci_parent_jars, list)
         assert isinstance(self.launcher_configs, list)
         assert isinstance(self.library_configs, list)
 
@@ -396,7 +422,8 @@ def jlink_new_jdk(jdk, dst_jdk_dir, module_dists, root_module_names=None, missin
                      The named modules must either be in `module_dists` or in `jdk`. If None, then
                      the root set will be all the modules in ``module_dists` and `jdk`.
     :param str missing_export_target_action: the action to perform for a qualifed export target that
-                     is not present in `module_dists`. The choices are:
+                     is not present in `module_dists` and does not have a hash stored in java.base.
+                     The choices are:
                        "create" - an empty module is created
                         "error" - raise an error
                            None - do nothing
@@ -416,8 +443,21 @@ def jlink_new_jdk(jdk, dst_jdk_dir, module_dists, root_module_names=None, missin
     if not isdir(jmods_dir):
         mx.abort('Cannot derive a new JDK from ' + jdk.home + ' since ' + jmods_dir + ' is missing or is not a directory')
 
+    jdk_modules = {jmd.name : jmd for jmd in jdk.get_modules()}
     modules = [as_java_module(dist, jdk) for dist in module_dists]
-    all_module_names = frozenset([m.name for m in jdk.get_modules()] + [m.name for m in modules])
+    all_module_names = frozenset(list(jdk_modules.keys()) + [m.name for m in modules])
+
+    # Read hashes stored in java.base (the only module in the JDK where hashes are stored)
+    out = mx.LinesOutputCapture()
+    mx.run([jdk.exe_path('jmod'), 'describe', jdk_modules['java.base'].get_jmod_path()], out=out)
+    lines = out.lines
+    hashes = {}
+    for line in lines:
+        if line.startswith('hashes'):
+            parts = line.split()
+            assert len(parts) == 4, 'expected hashes line to have 4 fields, got {} fields: {}'.format(len(parts), line)
+            _, module_name, algorithm, hash_value = parts
+            hashes[module_name] = (algorithm, hash_value)
 
     build_dir = mx.ensure_dir_exists(join(dst_jdk_dir + ".build"))
     try:
@@ -426,7 +466,7 @@ def jlink_new_jdk(jdk, dst_jdk_dir, module_dists, root_module_names=None, missin
         for jmd in modules:
             for targets in jmd.exports.values():
                 for target in targets:
-                    if target not in all_module_names:
+                    if target not in all_module_names and target not in hashes:
                         target_requires.setdefault(target, set()).add(jmd.name)
         if target_requires and missing_export_target_action is not None:
             if missing_export_target_action == 'error':
@@ -454,7 +494,7 @@ def jlink_new_jdk(jdk, dst_jdk_dir, module_dists, root_module_names=None, missin
                 mx.run([jdk.javac.replace('javac', 'jmod'), 'create', '--class-path=' + module_build_dir, jmd.get_jmod_path()])
 
             modules.extend(extra_modules)
-            all_module_names = frozenset([m.name for m in jdk.get_modules()] + [m.name for m in modules])
+            all_module_names = frozenset(list(jdk_modules.keys()) + [m.name for m in modules])
 
         # Extract src.zip from source JDK
         jdk_src_zip = join(jdk.home, 'lib', 'src.zip')
@@ -553,6 +593,19 @@ def jlink_new_jdk(jdk, dst_jdk_dir, module_dists, root_module_names=None, missin
     if mx.run([mx.exe_suffix(join(dst_jdk_dir, 'bin', 'java')), '-Xshare:dump', '-Xmx128M', '-Xms128M'], out=out, err=out, nonZeroIsFatal=False) != 0:
         mx.log(out.data)
         mx.abort('Error generating CDS shared archive')
+
+
+register_graalvm_component(GraalVmJreComponent(
+    suite=_suite,
+    name='Graal SDK',
+    short_name='sdk',
+    dir_name='graalvm',
+    license_files=[],
+    third_party_license_files=[],
+    jar_distributions=['sdk:LAUNCHER_COMMON'],
+    boot_jars=['sdk:GRAAL_SDK']
+))
+
 
 mx.update_commands(_suite, {
     'javadoc': [javadoc, '[SL args|@VM options]'],

@@ -235,6 +235,7 @@ import com.oracle.truffle.llvm.runtime.nodes.intrinsics.llvm.debug.LLVMToDebugVa
 import com.oracle.truffle.llvm.runtime.nodes.intrinsics.llvm.x86.LLVMX86_64BitVACopyNodeGen;
 import com.oracle.truffle.llvm.runtime.nodes.intrinsics.llvm.x86.LLVMX86_64BitVAEnd;
 import com.oracle.truffle.llvm.runtime.nodes.intrinsics.llvm.x86.LLVMX86_64VAStartNodeGen;
+import com.oracle.truffle.llvm.runtime.nodes.intrinsics.llvm.x86.LLVMX86_ComparisonNodeFactory.LLVMX86_CmpssNodeGen;
 import com.oracle.truffle.llvm.runtime.nodes.intrinsics.llvm.x86.LLVMX86_ConversionNodeFactory.LLVMX86_ConversionDoubleToIntNodeGen;
 import com.oracle.truffle.llvm.runtime.nodes.intrinsics.llvm.x86.LLVMX86_ConversionNodeFactory.LLVMX86_ConversionFloatToIntNodeGen;
 import com.oracle.truffle.llvm.runtime.nodes.intrinsics.llvm.x86.LLVMX86_ConversionNodeFactory.LLVMX86_MovmskpdNodeGen;
@@ -598,7 +599,7 @@ public class BasicNodeFactory implements NodeFactory {
             case I64:
                 return LLVMI64RMWNodeFactory.LLVMI64RMWXchgNodeGen.create(pointerNode, valueNode);
             default:
-                throw new AssertionError(type);
+                throw new AssertionError("unsupported for atomicrmw xchg: " + type);
         }
     }
 
@@ -616,7 +617,7 @@ public class BasicNodeFactory implements NodeFactory {
             case I64:
                 return LLVMI64RMWNodeFactory.LLVMI64RMWAddNodeGen.create(pointerNode, valueNode);
             default:
-                throw new AssertionError(type);
+                throw new AssertionError("unsupported add atomicrmw xchg: " + type);
         }
     }
 
@@ -634,7 +635,7 @@ public class BasicNodeFactory implements NodeFactory {
             case I64:
                 return LLVMI64RMWNodeFactory.LLVMI64RMWSubNodeGen.create(pointerNode, valueNode);
             default:
-                throw new AssertionError(type);
+                throw new AssertionError("unsupported sub atomicrmw xchg: " + type);
         }
     }
 
@@ -652,7 +653,7 @@ public class BasicNodeFactory implements NodeFactory {
             case I64:
                 return LLVMI64RMWNodeFactory.LLVMI64RMWAndNodeGen.create(pointerNode, valueNode);
             default:
-                throw new AssertionError(type);
+                throw new AssertionError("unsupported for atomicrmw and: " + type);
         }
     }
 
@@ -670,7 +671,7 @@ public class BasicNodeFactory implements NodeFactory {
             case I64:
                 return LLVMI64RMWNodeFactory.LLVMI64RMWNandNodeGen.create(pointerNode, valueNode);
             default:
-                throw new AssertionError(type);
+                throw new AssertionError("unsupported for atomicrmw nand: " + type);
         }
     }
 
@@ -688,7 +689,7 @@ public class BasicNodeFactory implements NodeFactory {
             case I64:
                 return LLVMI64RMWNodeFactory.LLVMI64RMWOrNodeGen.create(pointerNode, valueNode);
             default:
-                throw new AssertionError(type);
+                throw new AssertionError("unsupported for atomicrmw or: " + type);
         }
     }
 
@@ -706,7 +707,7 @@ public class BasicNodeFactory implements NodeFactory {
             case I64:
                 return LLVMI64RMWNodeFactory.LLVMI64RMWXorNodeGen.create(pointerNode, valueNode);
             default:
-                throw new AssertionError(type);
+                throw new AssertionError("unsupported for atomicrmw xor: " + type);
         }
     }
 
@@ -1167,6 +1168,10 @@ public class BasicNodeFactory implements NodeFactory {
     @Override
     public LLVMExpressionNode createUnsignedCast(LLVMExpressionNode fromNode, PrimitiveKind kind) {
         switch (kind) {
+            case I1:
+                // Since signed (fptosi) and unsigned (fptoui) casts to i1 behave the same, we
+                // return a SignedCastToI1 node here.
+                return LLVMSignedCastToI1NodeGen.create(fromNode);
             case I8:
                 return LLVMUnsignedCastToI8NodeGen.create(fromNode);
             case I16:
@@ -1680,12 +1685,12 @@ public class BasicNodeFactory implements NodeFactory {
 
     @Override
     public LLVMExpressionNode createFunctionBlockNode(FrameSlot exceptionValueSlot, List<? extends LLVMStatementNode> allFunctionNodes, UniquesRegionAllocator uniquesRegionAllocator,
-                    FrameSlot[][] beforeBlockNuller, FrameSlot[][] afterBlockNuller, LLVMStatementNode[] copyArgumentsToFrame, LLVMSourceLocation location) {
+                    FrameSlot[][] beforeBlockNuller, FrameSlot[][] afterBlockNuller, LLVMStatementNode[] copyArgumentsToFrame, LLVMSourceLocation location, FrameDescriptor frameDescriptor) {
         LLVMUniquesRegionAllocNode uniquesRegionAllocNode = LLVMUniquesRegionAllocNodeGen.create(uniquesRegionAllocator);
         LLVMDispatchBasicBlockNode body = new LLVMDispatchBasicBlockNode(exceptionValueSlot, allFunctionNodes.toArray(new LLVMBasicBlockNode[allFunctionNodes.size()]), beforeBlockNuller,
                         afterBlockNuller);
         body.getOrCreateSourceDescriptor().setSourceLocation(location);
-        final LLVMFunctionRootNode functionRoot = new LLVMFunctionRootNode(uniquesRegionAllocNode, copyArgumentsToFrame, body);
+        final LLVMFunctionRootNode functionRoot = new LLVMFunctionRootNode(uniquesRegionAllocNode, copyArgumentsToFrame, body, frameDescriptor);
         functionRoot.getOrCreateSourceDescriptor().setSourceLocation(location);
         return functionRoot;
     }
@@ -1972,6 +1977,13 @@ public class BasicNodeFactory implements NodeFactory {
             case "llvm.dbg.addr":
             case "llvm.dbg.value":
                 throw new IllegalStateException("Unhandled call to intrinsic function " + declaration.getName());
+            case "llvm.dbg.label":
+                // a call to dbg.label describes that execution has arrived at a label in the
+                // original source code. the source location of the call will be applied, rather
+                // than the explicit descriptor of the label which is passed to dbg.label. both
+                // reference the same line number, this just avoids special-casing dbg.label like
+                // the other dbg.* intrinsics.
+                return LLVMNoOpNodeGen.create();
             case "llvm.eh.typeid.for":
                 return new LLVMTypeIdForExceptionNode(args[1]);
             case "llvm.expect.i1": {
@@ -2062,6 +2074,8 @@ public class BasicNodeFactory implements NodeFactory {
                 return LLVMCMathsIntrinsicsFactory.LLVMRintNodeGen.create(args[1]);
             case "llvm.x86.sse.cvtss2si":
                 return LLVMX86_ConversionFloatToIntNodeGen.create(args[1]);
+            case "llvm.x86.sse.cmp.ss":
+                return LLVMX86_CmpssNodeGen.create(args[1], args[2], args[3]);
             case "llvm.x86.sse2.cvtsd2si":
                 return LLVMX86_ConversionDoubleToIntNodeGen.create(args[1]);
             case "llvm.x86.sse2.sqrt.pd":

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014, 2018, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2014, 2019, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -63,7 +63,8 @@ final class GraalTVMCI extends TVMCI {
 
     @Override
     protected boolean isGuestCallStackFrame(StackTraceElement e) {
-        return e.getMethodName().equals(OptimizedCallTarget.CALL_BOUNDARY_METHOD_NAME) && e.getClassName().equals(OptimizedCallTarget.class.getName());
+        return (e.getMethodName().equals(OptimizedCallTarget.CALL_BOUNDARY_METHOD_NAME) && e.getClassName().equals(OptimizedCallTarget.class.getName())) ||
+                        (e.getMethodName().equals(OptimizedCallTarget.CALL_INLINED_METHOD_NAME) && e.getClassName().equals(OptimizedCallTarget.OptimizedCallInlined.class.getName()));
     }
 
     /**

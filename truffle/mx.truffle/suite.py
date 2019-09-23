@@ -39,7 +39,7 @@
 # SOFTWARE.
 #
 suite = {
-  "mxversion" : "5.231.0",
+  "mxversion" : "5.235.0",
   "name" : "truffle",
   "version" : "19.3.0",
   "release" : False,
@@ -131,10 +131,8 @@ suite = {
     "com.oracle.truffle.api.jdk8" : {
       "subDir" : "src",
       "sourceDirs" : ["src"],
-      "dependencies" : [
-        "com.oracle.truffle.api",
-      ],
       "overlayTarget" : "com.oracle.truffle.api",
+      "checkPackagePrefix" : "false",
       "checkstyle" : "com.oracle.truffle.api",
       "javaCompliance" : "8",
       "workingSets" : "API,Truffle",
@@ -143,10 +141,8 @@ suite = {
     "com.oracle.truffle.api.jdk11" : {
       "subDir" : "src",
       "sourceDirs" : ["src"],
-      "dependencies" : [
-        "com.oracle.truffle.api",
-      ],
       "overlayTarget" : "com.oracle.truffle.api",
+      "checkPackagePrefix" : "false",
       "multiReleaseJarVersion" : "11",
       "checkstyle" : "com.oracle.truffle.api",
       "javaCompliance" : "11+",
@@ -758,6 +754,22 @@ suite = {
           "java.logging"
         ],
         "exports" : [
+          # Qualified exports
+          "com.oracle.truffle.api* to jdk.internal.vm.compiler, com.oracle.graal.graal_enterprise",
+          "com.oracle.truffle.api.impl to org.graalvm.locator",
+          "com.oracle.truffle.api to org.graalvm.locator",
+          "com.oracle.truffle.object to jdk.internal.vm.compiler, com.oracle.graal.graal_enterprise",
+        ],
+        "uses" : [
+          "com.oracle.truffle.api.TruffleRuntimeAccess",
+          "java.nio.file.spi.FileTypeDetector",
+          "com.oracle.truffle.api.impl.TruffleLocator",
+        ],
+      },
+      "moduleInfo:open" : {
+        # This is the module descriptor for the Truffle API modular jar deployed via maven.
+        # It exports all the Truffle API packages.
+        "exports" : [
           # Unqualified exports
           "com.oracle.truffle.api.object.dsl",
           "com.oracle.truffle.api.debug",
@@ -778,11 +790,6 @@ suite = {
           "com.oracle.truffle.api.impl to jdk.internal.vm.compiler, org.graalvm.locator",
           "com.oracle.truffle.object to jdk.internal.vm.compiler, com.oracle.graal.graal_enterprise",
         ],
-        "uses" : [
-          "com.oracle.truffle.api.TruffleRuntimeAccess",
-          "java.nio.file.spi.FileTypeDetector",
-          "com.oracle.truffle.api.impl.TruffleLocator",
-        ],
       },
       "subDir" : "src",
       "javaCompliance" : "8+",
@@ -801,6 +808,10 @@ suite = {
       ],
       "description" : "Truffle is a multi-language framework for executing dynamic languages\nthat achieves high performance when combined with Graal.",
       "javadocType": "api",
+      "maven" : {
+        # Deploy the modular jar specified by "moduleInfo.open"
+        "moduleInfo" : "open",
+      }
     },
 
     "TRUFFLE_NFI" : {
@@ -1044,6 +1055,7 @@ suite = {
       ],
       "description" : "Instrumentation tests including InstrumentationTestLanguage.",
       "allowsJavadocWarnings": True,
+      "maven" : False,
     },
 
      "TRUFFLE_TEST" : {
@@ -1089,6 +1101,7 @@ suite = {
       "layout" : {
         "native-image.properties" : "file:mx.truffle/macro-truffle.properties",
       },
+      "maven" : False,
     },
 
     "TRUFFLE_NFI_GRAALVM_SUPPORT" : {
@@ -1097,6 +1110,17 @@ suite = {
       "layout" : {
         "native-image.properties" : "file:mx.truffle/language-nfi.properties",
       },
+      "maven" : False,
+    },
+
+    "TRUFFLE_NFI_GRAALVM_HEADERS_SUPPORT" : {
+      "native" : True,
+      "platformDependent" : True,
+      "description" : "Truffle NFI support distribution for the GraalVM",
+      "layout" : {
+        "./" : ["dependency:com.oracle.truffle.nfi.native/include/*.h"],
+      },
+      "maven" : False,
     },
   },
 }
