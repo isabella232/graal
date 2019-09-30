@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012, 2017, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012, 2019, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -70,7 +70,6 @@ import org.graalvm.compiler.nodes.java.ArrayLengthNode;
 import org.graalvm.compiler.nodes.java.NewArrayNode;
 import org.graalvm.compiler.nodes.java.StoreIndexedNode;
 import org.graalvm.compiler.nodes.type.NarrowOopStamp;
-import org.graalvm.compiler.nodes.util.GraphUtil;
 import org.graalvm.compiler.options.Option;
 import org.graalvm.compiler.replacements.nodes.BasicObjectCloneNode;
 import org.graalvm.compiler.serviceprovider.JavaVersionUtil;
@@ -104,7 +103,7 @@ import com.oracle.svm.core.graal.nodes.FarReturnNode;
 import com.oracle.svm.core.graal.nodes.FormatArrayNode;
 import com.oracle.svm.core.graal.nodes.FormatObjectNode;
 import com.oracle.svm.core.graal.nodes.ReadCallerStackPointerNode;
-import com.oracle.svm.core.graal.nodes.ReadRegisterFixedNode;
+import com.oracle.svm.core.graal.nodes.ReadHeapBaseFixedNode;
 import com.oracle.svm.core.graal.nodes.ReadReturnAddressNode;
 import com.oracle.svm.core.graal.nodes.ReadStackPointerNode;
 import com.oracle.svm.core.graal.nodes.SubstrateCompressionNode;
@@ -127,6 +126,7 @@ import com.oracle.svm.hosted.FallbackFeature;
 import com.oracle.svm.hosted.GraalEdgeUnsafePartition;
 import com.oracle.svm.hosted.meta.HostedMetaAccess;
 import com.oracle.svm.hosted.meta.HostedMethod;
+import com.oracle.svm.hosted.nodes.DeoptProxyNode;
 import com.oracle.svm.hosted.substitute.AnnotationSubstitutionProcessor;
 
 import jdk.vm.ci.meta.ConstantReflectionProvider;
@@ -279,7 +279,7 @@ public class SubstrateGraphBuilderPlugins {
      */
     static Class<?>[] extractClassArray(AnnotationSubstitutionProcessor annotationSubstitutions, SnippetReflectionProvider snippetReflection, ValueNode arrayNode, boolean exact) {
         /* Use the original value in case we are in a deopt target method. */
-        ValueNode originalArrayNode = GraphUtil.originalValue(arrayNode);
+        ValueNode originalArrayNode = getDeoptProxyOriginalValue(arrayNode);
         if (originalArrayNode.isConstant() && !exact) {
             /*
              * The array is a constant, however that doesn't make the array immutable, i.e., its
@@ -318,7 +318,7 @@ public class SubstrateGraphBuilderPlugins {
             FixedNode successor = unwrapNode(newArray.next());
             while (successor instanceof StoreIndexedNode) {
                 StoreIndexedNode store = (StoreIndexedNode) successor;
-                assert GraphUtil.originalValue(store.array()).equals(newArray);
+                assert getDeoptProxyOriginalValue(store.array()).equals(newArray);
                 ValueNode valueNode = store.value();
                 if (valueNode.isConstant() && !valueNode.isNullConstant()) {
                     Class<?> clazz = snippetReflection.asObject(Class.class, valueNode.asJavaConstant());
@@ -345,6 +345,14 @@ public class SubstrateGraphBuilderPlugins {
             return classList != null && classList.size() == newArrayLength ? classList.toArray(new Class<?>[0]) : null;
         }
         return null;
+    }
+
+    private static ValueNode getDeoptProxyOriginalValue(ValueNode node) {
+        ValueNode original = node;
+        while (original instanceof DeoptProxyNode) {
+            original = ((DeoptProxyNode) original).getOriginalNode();
+        }
+        return original;
     }
 
     /**
@@ -585,7 +593,7 @@ public class SubstrateGraphBuilderPlugins {
         r.register0("heapBase", new InvocationPlugin() {
             @Override
             public boolean apply(GraphBuilderContext b, ResolvedJavaMethod targetMethod, Receiver receiver) {
-                b.addPush(JavaKind.Object, ReadRegisterFixedNode.forHeapBase());
+                b.addPush(JavaKind.Object, new ReadHeapBaseFixedNode());
                 return true;
             }
         });

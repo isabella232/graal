@@ -49,7 +49,7 @@ import datetime
 import os
 import shutil
 
-from os.path import join, exists, isfile, isdir, basename
+from os.path import join, exists, isfile, isdir, dirname, basename, relpath
 from zipfile import ZipFile, ZIP_DEFLATED
 
 from mx_gate import Task
@@ -154,7 +154,7 @@ class LauncherConfig(AbstractNativeImageConfig):
         :param str main_class
         :param bool is_main_launcher
         :param bool default_symlinks
-        :param bool is_sdk_launcher
+        :param bool is_sdk_launcher: Whether it uses org.graalvm.launcher.Launcher
         :param str custom_bash_launcher: Uses custom bash launcher, unless compiled as native image
         """
         super(LauncherConfig, self).__init__(destination, jar_distributions, build_args, **kwargs)
@@ -164,6 +164,14 @@ class LauncherConfig(AbstractNativeImageConfig):
         self.is_sdk_launcher = is_sdk_launcher
         self.custom_bash_launcher = custom_bash_launcher
         self.extra_jvm_args = [] if extra_jvm_args is None else extra_jvm_args
+
+        self.relative_home_paths = {}
+
+    def add_relative_home_path(self, language, path):
+        if language in self.relative_home_paths and self.relative_home_paths[language] != path:
+            raise Exception('the relative home path of {} is already set to {} and cannot also be set to {} for {}'.format(
+                language, self.relative_home_paths[language], path, self.destination))
+        self.relative_home_paths[language] = path
 
 
 class LanguageLauncherConfig(LauncherConfig):
@@ -175,6 +183,9 @@ class LanguageLauncherConfig(LauncherConfig):
         super(LanguageLauncherConfig, self).__init__(destination, jar_distributions, main_class, build_args,
                                                      is_sdk_launcher=is_sdk_launcher, is_polyglot=False, **kwargs)
         self.language = language
+
+        # Ensure the language launcher can always find the language home
+        self.add_relative_home_path(language, relpath('.', dirname(destination)))
 
 
 class LibraryConfig(AbstractNativeImageConfig):
@@ -291,17 +302,20 @@ class GraalVmComponent(object):
 
 class GraalVmTruffleComponent(GraalVmComponent):
     def __init__(self, suite, name, short_name, license_files, third_party_license_files, truffle_jars,
-                 include_in_polyglot=True, standalone_dir_name=None, **kwargs):
+                 include_in_polyglot=True, standalone_dir_name=None, standalone_dependencies=None, **kwargs):
         """
         :param list[str] truffle_jars: JAR distributions that should be on the classpath for the language implementation.
         :param bool include_in_polyglot: whether this component is included in `--language:all` or `--tool:all` and should be part of polyglot images.
         :param str standalone_dir_name: name for the standalone archive and directory inside
+        :param dict[str, (str, list[str])] standalone_dependencies: dict of dependent components to include in the standalone in the form {component name: (relative path, excluded_paths)}.
         """
         super(GraalVmTruffleComponent, self).__init__(suite, name, short_name, license_files, third_party_license_files,
                                                       jar_distributions=truffle_jars, **kwargs)
         self.include_in_polyglot = include_in_polyglot
         self.standalone_dir_name = standalone_dir_name or '{}-<version>-<graalvm_os>-<arch>'.format(self.dir_name)
+        self.standalone_dependencies = standalone_dependencies or {}
         assert isinstance(self.include_in_polyglot, bool)
+        assert isinstance(self.standalone_dependencies, dict)
 
 
 class GraalVmLanguage(GraalVmTruffleComponent):
@@ -410,7 +424,7 @@ def jdk_enables_jvmci_by_default(jdk):
         setattr(jdk, '.enables_jvmci_by_default', any('EnableJVMCI' in line and 'true' in line for line in out.lines))
     return getattr(jdk, '.enables_jvmci_by_default')
 
-def jlink_new_jdk(jdk, dst_jdk_dir, module_dists, root_module_names=None, missing_export_target_action='create'):
+def jlink_new_jdk(jdk, dst_jdk_dir, module_dists, root_module_names=None, missing_export_target_action='create', with_source=lambda x: True):
     """
     Uses jlink from `jdk` to create a new JDK image in `dst_jdk_dir` with `module_dists` and
     their dependencies added to the JDK image, replacing any existing modules of the same name.
@@ -427,8 +441,10 @@ def jlink_new_jdk(jdk, dst_jdk_dir, module_dists, root_module_names=None, missin
                        "create" - an empty module is created
                         "error" - raise an error
                            None - do nothing
-
+    :param lambda with_source: returns True if the sources of a module distribution must be included in the new JDK
     """
+    assert callable(with_source)
+
     if jdk.javaCompliance < '9':
         mx.abort('Cannot derive a new JDK from ' + jdk.home + ' with jlink since it is not JDK 9 or later')
 
@@ -505,22 +521,26 @@ def jlink_new_jdk(jdk, dst_jdk_dir, module_dists, root_module_names=None, missin
                 for name in zf.namelist():
                     if not name.endswith('/'):
                         dst_src_zip_contents[name] = zf.read(name)
+        else:
+            mx.warn("'{}' does not exist or is not a file".format(jdk_src_zip))
 
         for jmd in modules:
-            # Remove existing sources for module
+            # Remove existing sources for all the modules that we include
             dst_src_zip_contents = {key : dst_src_zip_contents[key] for key in dst_src_zip_contents if not key.startswith(jmd.name)}
 
-            # Extract module sources
-            jmd_src_zip = jmd.jarpath[0:-len('.jar')] + '.src.zip'
-            if isfile(jmd_src_zip):
-                mx.logv('[Extracting ' + jmd_src_zip + ']')
-                with ZipFile(jmd_src_zip, 'r') as zf:
-                    for name in zf.namelist():
-                        if not name.endswith('/'):
-                            dst_src_zip_contents[jmd.name + '/' + name] = zf.read(name)
+            if with_source(jmd.dist):
+                # Add the sources that we can share.
+                # Extract module sources
+                jmd_src_zip = jmd.jarpath[0:-len('.jar')] + '.src.zip'
+                if isfile(jmd_src_zip):
+                    mx.logv('[Extracting ' + jmd_src_zip + ']')
+                    with ZipFile(jmd_src_zip, 'r') as zf:
+                        for name in zf.namelist():
+                            if not name.endswith('/'):
+                                dst_src_zip_contents[jmd.name + '/' + name] = zf.read(name)
 
-            # As module-info.java to sources
-            dst_src_zip_contents[jmd.name + '/module-info.java'] = jmd.as_module_info(extras_as_comments=False)
+                # Add module-info.java to sources
+                dst_src_zip_contents[jmd.name + '/module-info.java'] = jmd.as_module_info(extras_as_comments=False)
 
         # Now build the new JDK image with jlink
         jlink = [jdk.javac.replace('javac', 'jlink')]
@@ -557,20 +577,9 @@ def jlink_new_jdk(jdk, dst_jdk_dir, module_dists, root_module_names=None, missin
         mx.logv('[Creating JDK image]')
         mx.run(jlink)
 
-        # Create lib/src.zip in new JDK
-        def add_to_zip(zf, path, zippath):
-            if os.path.isfile(path):
-                zf.write(path, zippath, ZIP_DEFLATED)
-            elif os.path.isdir(path):
-                if zippath:
-                    zf.write(path, zippath)
-                for nm in os.listdir(path):
-                    add_to_zip(zf,
-                            os.path.join(path, nm), os.path.join(zippath, nm))
-
         dst_src_zip = join(dst_jdk_dir, 'lib', 'src.zip')
         mx.logv('[Creating ' + dst_src_zip + ']')
-        with ZipFile(dst_src_zip, 'w', allowZip64=True) as zf:
+        with ZipFile(dst_src_zip, 'w', compression=ZIP_DEFLATED, allowZip64=True) as zf:
             for name, contents in sorted(dst_src_zip_contents.items()):
                 zf.writestr(name, contents)
 

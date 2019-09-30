@@ -108,14 +108,14 @@ def updategraalinopenjdk(args):
         # JDK module jdk.internal.vm.compiler is composed of sources from:
         GraalJDKModule('jdk.internal.vm.compiler',
             # 1. Classes in the compiler suite under the org.graalvm namespace except for packages
-            #    or projects whose names include "truffle", "management", "core.llvm" or "replacements.llvm"
-            [SuiteJDKInfo('compiler', ['org.graalvm'], ['truffle', 'management', 'core.llvm', 'replacements.llvm']),
+            #    or projects whose names contain terms on the specified exclude list
+            [SuiteJDKInfo('compiler', ['org.graalvm'], ['truffle', 'management', 'core.llvm', 'replacements.llvm', 'libgraal.jni']),
             # 2. Classes in the sdk suite under the org.graalvm.collections and org.graalvm.word namespaces
              SuiteJDKInfo('sdk', ['org.graalvm.collections', 'org.graalvm.word'], [])]),
         # JDK module jdk.internal.vm.compiler.management is composed of sources from:
         GraalJDKModule('jdk.internal.vm.compiler.management',
             # 1. Classes in the compiler suite under the org.graalvm.compiler.hotspot.management namespace
-            [SuiteJDKInfo('compiler', ['org.graalvm.compiler.hotspot.management'], [])]),
+            [SuiteJDKInfo('compiler', ['org.graalvm.compiler.hotspot.management'], ['libgraal'])]),
         # JDK module jdk.aot is composed of sources from:
         GraalJDKModule('jdk.aot',
             # 1. Classes in the compiler suite under the jdk.tools.jaotc namespace
@@ -215,6 +215,7 @@ def updategraalinopenjdk(args):
                 target_dir = join(classes_dir, new_project_name, 'src')
                 copied_source_dirs.append(source_dir)
 
+                trailing = re.compile(r"[ \t]+\n")
                 for dirpath, _, filenames in os.walk(source_dir):
                     for filename in filenames:
                         src_file = join(dirpath, filename)
@@ -230,8 +231,11 @@ def updategraalinopenjdk(args):
                                     dst = src_file.replace(old_name_as_dir, new_name_as_dir)
                                     dst_file = join(target_dir, os.path.relpath(dst, source_dir))
                                 contents = contents.replace(old_name, new_name)
+
                             for old_line, new_line in replacements.items():
                                 contents = contents.replace(old_line, new_line)
+
+                            contents = re.sub(trailing, '\n', contents)
 
                             match = java_package_re.search(contents)
                             if not match:

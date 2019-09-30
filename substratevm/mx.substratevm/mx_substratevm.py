@@ -107,7 +107,9 @@ graal_compiler_export_packages = [
     'jdk.internal.vm.ci/jdk.vm.ci.hotspot',
     'jdk.internal.vm.ci/jdk.vm.ci.services',
     'jdk.internal.vm.ci/jdk.vm.ci.common',
-    'jdk.internal.vm.ci/jdk.vm.ci.code.site']
+    'jdk.internal.vm.ci/jdk.vm.ci.code.site',
+    'jdk.internal.vm.ci/jdk.vm.ci.code.stack',
+]
 GRAAL_COMPILER_FLAGS_MAP['11'].extend(add_exports_from_packages(graal_compiler_export_packages))
 
 graal_compiler_opens_packages = [
@@ -965,6 +967,13 @@ mx_sdk.register_graalvm_component(mx_sdk.GraalVMSvmMacro(
 ))
 
 if 'LIBGRAAL' in os.environ:
+    jar_distributions = [
+        'substratevm:GRAAL_HOTSPOT_LIBRARY',
+        'compiler:GRAAL_LIBGRAAL_JNI',
+        'compiler:GRAAL_TRUFFLE_COMPILER_LIBGRAAL']
+    jdk8 = mx.get_jdk(mx.JavaCompliance(8), cancel='GRAAL_MANAGEMENT_LIBGRAAL will be not added', purpose="configure jvmcicompiler", tag=mx.DEFAULT_JDK_TAG)
+    if jdk8:
+        jar_distributions.append('compiler:GRAAL_MANAGEMENT_LIBGRAAL')
     mx_sdk.register_graalvm_component(mx_sdk.GraalVmJreComponent(
         suite=suite,
         name='LibGraal',
@@ -980,10 +989,7 @@ if 'LIBGRAAL' in os.environ:
             mx_sdk.LibraryConfig(
                 destination="<lib:jvmcicompiler>",
                 jvm_library=True,
-                jar_distributions=[
-                    'substratevm:GRAAL_HOTSPOT_LIBRARY',
-                    'compiler:GRAAL_TRUFFLE_COMPILER_LIBGRAAL'
-                ],
+                jar_distributions=jar_distributions,
                 build_args=[
                     '--features=com.oracle.svm.graal.hotspot.libgraal.LibGraalFeature',
                     '--initialize-at-build-time',
