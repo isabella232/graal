@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2019, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,10 +22,29 @@
  * or visit www.oracle.com if you need additional information or have any
  * questions.
  */
+package com.oracle.graal.pointsto.infrastructure;
 
-/**
- * JDK 11 and later versioned overlay for the {@code jdk.internal.vm.compiler.management} module.
- * This cannot be used in JDK 10 where {@code jdk.internal.vm.compiler.management} is a
- * non-upgradeable module.
- */
-package org.graalvm.compiler.hotspot.management;
+import java.lang.reflect.Field;
+
+import org.graalvm.compiler.api.replacements.SnippetReflectionProvider;
+
+import com.oracle.graal.pointsto.util.AnalysisError;
+
+import jdk.vm.ci.meta.ResolvedJavaField;
+
+public interface OriginalFieldProvider {
+
+    static Field getJavaField(SnippetReflectionProvider reflectionProvider, ResolvedJavaField field) {
+        if (field instanceof OriginalFieldProvider) {
+            return ((OriginalFieldProvider) field).getJavaField();
+        }
+        try {
+            Class<?> declaringClass = OriginalClassProvider.getJavaClass(reflectionProvider, field.getDeclaringClass());
+            return declaringClass.getDeclaredField(field.getName());
+        } catch (NoSuchFieldException e) {
+            throw AnalysisError.shouldNotReachHere();
+        }
+    }
+
+    Field getJavaField();
+}

@@ -168,8 +168,6 @@ def registered_graalvm_components(stage1=False):
                 if component not in components_to_build and not (excludes and is_excluded(component)):
                     components_to_build.append(component)
                     components.extend(component.direct_dependencies())
-                    if isinstance(component, mx_sdk.GraalVmLanguage):
-                        components.append(mx_sdk.graalvm_component_by_name('Truffle Macro'))
 
         # Expand dependencies
         add_dependencies([mx_sdk.graalvm_component_by_name(name) for name in default_components], excludes=True)
@@ -420,6 +418,11 @@ class BaseGraalVmLayoutDistribution(_with_metaclass(ABCMeta, mx.LayoutDistributi
                     'source_type': 'dependency',
                     'dependency': 'graalvm-jimage',
                     'path': '*',
+                })
+                # Temporary workaround until GR-16855 an SVM module provides the .a files
+                _add(layout, self.jdk_base + '/lib/', {
+                    'source_type': 'file',
+                    'path': _src_jdk_dir + (('/' + _src_jdk_base) if _src_jdk_base != '.' else '') + '/lib/*.a',
                 })
 
             # Add vm.properties

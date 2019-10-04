@@ -743,7 +743,9 @@ final class Runner {
     }
 
     private static void bindUnresolvedFunction(LLVMContext ctx, LLVMFunctionDescriptor function, NFIContextExtension nfiContextExtension, LLVMIntrinsicProvider intrinsicProvider) {
-        if (intrinsicProvider.isIntrinsified(function.getName())) {
+        if (function.getName().startsWith("llvm.")) {
+            // llvm intrinsic
+        } else if (intrinsicProvider.isIntrinsified(function.getName())) {
             function.define(intrinsicProvider);
         } else if (nfiContextExtension != null) {
             NativeLookupResult nativeFunction = nfiContextExtension.getNativeFunctionOrNull(ctx, function.getName());
@@ -1027,20 +1029,18 @@ final class Runner {
         }
     }
 
-    private LLVMFunctionDescriptor findMainMethod(List<LLVMParserResult> parserResults) {
+    private static LLVMFunctionDescriptor findMainMethod(List<LLVMParserResult> parserResults) {
         // check if the freshly parsed code exports a main method
         for (LLVMParserResult parserResult : parserResults) {
             LLVMScope fileScope = parserResult.getRuntime().getFileScope();
-            if (fileScope.exports(context, MAIN_METHOD_NAME)) {
-                LLVMSymbol mainMethod = fileScope.get(MAIN_METHOD_NAME);
-                if (mainMethod.isFunction() && mainMethod.isDefined() && mainMethod.asFunction().isLLVMIRFunction()) {
-                    /*
-                     * The `isLLVMIRFunction` check makes sure the `main` function is really defined
-                     * in bitcode. This prevents us from finding a native `main` function (e.g. the
-                     * `main` of the VM we're running in).
-                     */
-                    return mainMethod.asFunction();
-                }
+            LLVMSymbol mainMethod = fileScope.get(MAIN_METHOD_NAME);
+            if (mainMethod != null && mainMethod.isFunction() && mainMethod.isDefined() && mainMethod.asFunction().isLLVMIRFunction()) {
+                /*
+                 * The `isLLVMIRFunction` check makes sure the `main` function is really defined in
+                 * bitcode. This prevents us from finding a native `main` function (e.g. the `main`
+                 * of the VM we're running in).
+                 */
+                return mainMethod.asFunction();
             }
         }
         return null;

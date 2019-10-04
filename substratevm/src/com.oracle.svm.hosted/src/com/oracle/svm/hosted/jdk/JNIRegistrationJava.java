@@ -22,30 +22,83 @@
  * or visit www.oracle.com if you need additional information or have any
  * questions.
  */
-package com.oracle.svm.core.jdk;
+package com.oracle.svm.hosted.jdk;
 
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+
+import org.graalvm.compiler.nodes.ValueNode;
+import org.graalvm.compiler.nodes.graphbuilderconf.GraphBuilderConfiguration.Plugins;
+import org.graalvm.compiler.nodes.graphbuilderconf.GraphBuilderContext;
+import org.graalvm.compiler.nodes.graphbuilderconf.InvocationPlugin;
+import org.graalvm.compiler.nodes.graphbuilderconf.InvocationPlugins.Registration;
+import org.graalvm.compiler.phases.util.Providers;
 import org.graalvm.compiler.serviceprovider.JavaVersionUtil;
 import org.graalvm.nativeimage.Platforms;
-import org.graalvm.nativeimage.hosted.Feature;
 import org.graalvm.nativeimage.impl.InternalPlatform;
 
 import com.oracle.svm.core.annotate.AutomaticFeature;
+import com.oracle.svm.core.graal.GraalFeature;
+import com.oracle.svm.core.jdk.PlatformNativeLibrarySupport;
 import com.oracle.svm.core.jni.JNIRuntimeAccess;
+import com.oracle.svm.core.meta.SubstrateObjectConstant;
+import com.oracle.svm.hosted.FeatureImpl.BeforeAnalysisAccessImpl;
+import com.oracle.svm.hosted.c.NativeLibraries;
+
+import jdk.vm.ci.meta.ResolvedJavaMethod;
 
 /**
  * Registration of classes, methods, and fields accessed via JNI by C code of the JDK.
  */
 @Platforms({InternalPlatform.PLATFORM_JNI.class})
 @AutomaticFeature
-class JNIRegistrationJava extends JNIRegistrationUtil implements Feature {
+class JNIRegistrationJava extends JNIRegistrationUtil implements GraalFeature {
+
+    private NativeLibraries nativeLibraries;
+    private final ConcurrentMap<String, Boolean> registeredLibraries = new ConcurrentHashMap<>();
+
+    @Override
+    public void registerGraphBuilderPlugins(Providers providers, Plugins plugins, boolean analysis, boolean hosted) {
+        Registration systemRegistration = new Registration(plugins.getInvocationPlugins(), System.class);
+        systemRegistration.register1("loadLibrary", String.class, new InvocationPlugin() {
+            @Override
+            public boolean apply(GraphBuilderContext b, ResolvedJavaMethod targetMethod, Receiver receiver, ValueNode libnameNode) {
+                if (libnameNode.isConstant()) {
+                    String libname = (String) SubstrateObjectConstant.asObject(libnameNode.asConstant());
+                    if (libname != null && PlatformNativeLibrarySupport.singleton().isBuiltinLibrary(libname) && registeredLibraries.putIfAbsent(libname, Boolean.TRUE) != Boolean.TRUE) {
+                        /*
+                         * Support for automatic static linking of standard libraries. This works
+                         * because all of the JDK uses System.loadLibrary with literal String
+                         * arguments. If such a library is in our list of static standard libraries,
+                         * add the library to the linker command.
+                         */
+                        nativeLibraries.addLibrary(libname, true);
+                    }
+                }
+                /*
+                 * We never want to do any actual intrinsification, process the original invoke.
+                 */
+                return false;
+            }
+        });
+    }
 
     @Override
     public void duringSetup(DuringSetupAccess a) {
         rerunClassInit(a, "java.io.RandomAccessFile", "java.lang.ProcessEnvironment");
+        if (JavaVersionUtil.JAVA_SPEC <= 8) {
+            if (isPosix()) {
+                rerunClassInit(a, "java.lang.UNIXProcess");
+            }
+        } else {
+            rerunClassInit(a, "java.lang.ProcessImpl", "java.lang.ProcessHandleImpl");
+        }
     }
 
     @Override
     public void beforeAnalysis(BeforeAnalysisAccess a) {
+        nativeLibraries = ((BeforeAnalysisAccessImpl) a).getNativeLibraries();
+
         /*
          * It is difficult to track down all the places where exceptions are thrown via JNI. And
          * unconditional registration is cheap. Therefore, we register them unconditionally.
@@ -83,6 +136,14 @@ class JNIRegistrationJava extends JNIRegistrationUtil implements Feature {
             JNIRuntimeAccess.register(fields(a, "java.io.FileDescriptor", "append"));
         }
 
+        /* Used by FileOutputStream.initIDs, which is called unconditionally during startup. */
+        JNIRuntimeAccess.register(fields(a, "java.io.FileOutputStream", "fd"));
+        /* Used by FileInputStream.initIDs, which is called unconditionally during startup. */
+        JNIRuntimeAccess.register(fields(a, "java.io.FileInputStream", "fd"));
+        /* Used by UnixFileSystem/WinNTFileSystem.initIDs, called unconditionally during startup. */
+        JNIRuntimeAccess.register(java.io.File.class);
+        JNIRuntimeAccess.register(fields(a, "java.io.File", "path"));
+
         // TODO classify the remaining registrations
 
         JNIRuntimeAccess.register(byte[].class); /* used by ProcessEnvironment.environ() */
@@ -95,25 +156,11 @@ class JNIRegistrationJava extends JNIRegistrationUtil implements Feature {
         JNIRuntimeAccess.register(constructor(a, "java.lang.String", byte[].class, String.class));
         JNIRuntimeAccess.register(method(a, "java.lang.String", "getBytes", String.class));
         JNIRuntimeAccess.register(method(a, "java.lang.String", "concat", String.class));
-
-        JNIRuntimeAccess.register(java.io.File.class);
-        JNIRuntimeAccess.register(fields(a, "java.io.File", "path"));
-
-        a.registerReachabilityHandler(JNIRegistrationJava::registerFileOutputStreamInitIDs, method(a, "java.io.FileOutputStream", "initIDs"));
-        a.registerReachabilityHandler(JNIRegistrationJava::registerFileInputStreamInitIDs, method(a, "java.io.FileInputStream", "initIDs"));
-        a.registerReachabilityHandler(JNIRegistrationJava::registerRandomAccessFileInitIDs, method(a, "java.io.RandomAccessFile", "initIDs"));
-
         if (JavaVersionUtil.JAVA_SPEC >= 11) {
-            JNIRuntimeAccess.register(fields(a, "java.util.zip.Inflater", "inputConsumed", "outputConsumed"));
+            JNIRuntimeAccess.register(fields(a, "java.lang.String", "coder", "value"));
         }
-    }
 
-    private static void registerFileOutputStreamInitIDs(DuringAnalysisAccess a) {
-        JNIRuntimeAccess.register(fields(a, "java.io.FileOutputStream", "fd"));
-    }
-
-    private static void registerFileInputStreamInitIDs(DuringAnalysisAccess a) {
-        JNIRuntimeAccess.register(fields(a, "java.io.FileInputStream", "fd"));
+        a.registerReachabilityHandler(JNIRegistrationJava::registerRandomAccessFileInitIDs, method(a, "java.io.RandomAccessFile", "initIDs"));
     }
 
     private static void registerRandomAccessFileInitIDs(DuringAnalysisAccess a) {

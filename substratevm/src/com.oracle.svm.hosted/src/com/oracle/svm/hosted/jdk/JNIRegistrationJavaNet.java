@@ -22,7 +22,7 @@
  * or visit www.oracle.com if you need additional information or have any
  * questions.
  */
-package com.oracle.svm.core.jdk;
+package com.oracle.svm.hosted.jdk;
 
 import java.net.DatagramPacket;
 import java.net.InetAddress;
@@ -30,19 +30,18 @@ import java.util.function.Consumer;
 
 import org.graalvm.compiler.serviceprovider.JavaVersionUtil;
 import org.graalvm.nativeimage.Platforms;
-import org.graalvm.nativeimage.c.function.CLibrary;
 import org.graalvm.nativeimage.hosted.Feature;
 import org.graalvm.nativeimage.hosted.RuntimeReflection;
 import org.graalvm.nativeimage.impl.InternalPlatform;
 
 import com.oracle.svm.core.annotate.AutomaticFeature;
 import com.oracle.svm.core.jni.JNIRuntimeAccess;
+import com.oracle.svm.core.util.VMError;
 
 /**
  * Registration of classes, methods, and fields accessed via JNI by C code of the JDK.
  */
 @Platforms({InternalPlatform.PLATFORM_JNI.class})
-@CLibrary(value = "net", requireStatic = true)
 @AutomaticFeature
 class JNIRegistrationJavaNet extends JNIRegistrationUtil implements Feature {
 
@@ -62,6 +61,10 @@ class JNIRegistrationJavaNet extends JNIRegistrationUtil implements Feature {
         if (isWindows()) {
             rerunClassInit(a, "java.net.DualStackPlainSocketImpl", "java.net.TwoStacksPlainSocketImpl",
                             "java.net.DualStackPlainDatagramSocketImpl", "java.net.TwoStacksPlainDatagramSocketImpl");
+        }
+
+        if (JavaVersionUtil.JAVA_SPEC >= 11) {
+            rerunClassInit(a, "jdk.net.ExtendedSocketOptions", "sun.net.ext.ExtendedSocketOptions", "jdk.net.ExtendedSocketOptions$PlatformSocketOptions");
         }
     }
 
@@ -129,6 +132,11 @@ class JNIRegistrationJavaNet extends JNIRegistrationUtil implements Feature {
 
             a.registerReachabilityHandler(JNIRegistrationJavaNet::registerPlainSocketImplInitProto,
                             method(a, "java.net.DualStackPlainSocketImpl", "initIDs"));
+        }
+
+        if (JavaVersionUtil.JAVA_SPEC >= 11) {
+            a.registerReachabilityHandler(JNIRegistrationJavaNet::registerPlatformSocketOptionsCreate,
+                            method(a, "jdk.net.ExtendedSocketOptions$PlatformSocketOptions", "create"));
         }
     }
 
@@ -224,5 +232,26 @@ class JNIRegistrationJavaNet extends JNIRegistrationUtil implements Feature {
 
         JNIRuntimeAccess.register(clazz(a, "jdk.net.SocketFlow$Status"));
         JNIRuntimeAccess.register(fields(a, "jdk.net.SocketFlow$Status", "NO_STATUS", "OK", "NO_PERMISSION", "NOT_CONNECTED", "NOT_SUPPORTED", "ALREADY_CREATED", "IN_PROGRESS", "OTHER"));
+    }
+
+    private static void registerPlatformSocketOptionsCreate(DuringAnalysisAccess a) {
+        assert JavaVersionUtil.JAVA_SPEC >= 11;
+
+        String implClassName;
+        if (isLinux()) {
+            implClassName = "jdk.net.LinuxSocketOptions";
+        } else if (isDarwin()) {
+            implClassName = "jdk.net.MacOSXSocketOptions";
+        } else if (isWindows()) {
+            /*
+             * Windows uses PlatformSocketOptions directly, without any subclass and without any
+             * reflective instantiation.
+             */
+            return;
+        } else {
+            throw VMError.shouldNotReachHere("Unexpected platform");
+        }
+        RuntimeReflection.register(clazz(a, implClassName));
+        RuntimeReflection.register(constructor(a, implClassName));
     }
 }

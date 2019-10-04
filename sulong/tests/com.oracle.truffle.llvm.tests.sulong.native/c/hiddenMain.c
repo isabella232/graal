@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017, 2019, Oracle and/or its affiliates.
+ * Copyright (c) 2019, Oracle and/or its affiliates.
  *
  * All rights reserved.
  *
@@ -27,12 +27,13 @@
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
  * OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-package com.oracle.truffle.llvm.runtime.memory;
+#include <stdio.h>
 
-import com.oracle.truffle.api.frame.VirtualFrame;
-import com.oracle.truffle.api.nodes.NodeInterface;
-import com.oracle.truffle.llvm.runtime.pointer.LLVMPointer;
+int hello() {
+  printf("Hello!\n");
+  return 0;
+}
 
-public interface VarargsAreaStackAllocationNode extends NodeInterface {
-    LLVMPointer executeWithTarget(VirtualFrame frame, long size);
+__attribute__((visibility("hidden"))) int main() {
+  return hello();
 }

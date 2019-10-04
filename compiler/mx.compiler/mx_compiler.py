@@ -718,8 +718,9 @@ def _unittest_config_participant(config):
             # Export packages in all Graal modules and their dependencies
             for dist in _graal_config().dists:
                 jmd = as_java_module(dist, jdk)
-                mainClassArgs.extend(['-JUnitOpenPackages', jmd.name + '/*'])
-                vmArgs.append('--add-modules=' + jmd.name)
+                if _graaljdk_override is None or jmd in _graaljdk_override.get_modules():
+                    mainClassArgs.extend(['-JUnitOpenPackages', jmd.name + '/*'])
+                    vmArgs.append('--add-modules=' + jmd.name)
 
     vmArgs.append('-Dgraal.TrackNodeSourcePosition=true')
     vmArgs.append('-esa')
@@ -1330,7 +1331,7 @@ mx_sdk.register_graalvm_component(mx_sdk.GraalVmJvmciComponent(
     dir_name='graal',
     license_files=[],
     third_party_license_files=[],
-    dependencies=[],
+    dependencies=['Truffle'],
     jar_distributions=[  # Dev jars (annotation processors)
         'compiler:GRAAL_PROCESSOR_COMMON',
         'compiler:GRAAL_OPTIONS_PROCESSOR',

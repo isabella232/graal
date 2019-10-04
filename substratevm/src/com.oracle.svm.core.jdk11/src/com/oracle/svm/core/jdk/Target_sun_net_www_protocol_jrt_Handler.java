@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2019, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,10 +22,21 @@
  * or visit www.oracle.com if you need additional information or have any
  * questions.
  */
+package com.oracle.svm.core.jdk;
 
-/**
- * LabsJDK 11 versioned overlay for the {@code jdk.internal.vm.compiler.management} module.
- * This cannot be used in JDK 10 where {@code jdk.internal.vm.compiler.management} is a
- * non-upgradeable module.
- */
-package org.graalvm.compiler.hotspot.management;
+import java.io.IOException;
+import java.net.URL;
+import java.net.URLConnection;
+
+import com.oracle.svm.core.annotate.Substitute;
+import com.oracle.svm.core.annotate.TargetClass;
+import com.oracle.svm.core.util.VMError;
+
+@TargetClass(className = "sun.net.www.protocol.jrt.Handler", onlyWith = JDK11OrLater.class)
+public final class Target_sun_net_www_protocol_jrt_Handler {
+    @Substitute
+    @SuppressWarnings("unused")
+    protected URLConnection openConnection(URL url) throws IOException {
+        throw VMError.unsupportedFeature("JavaRuntimeURLConnection not available. The original mechanism for accessing resources in the runtime image is not supported.");
+    }
+}
