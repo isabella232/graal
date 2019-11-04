@@ -309,7 +309,7 @@ suite = {
       ],
       "javaProperties" : {
         "llvm.bin.dir" : "<path:SULONG_LLVM_ORG>/bin",
-        "llvm.home": "<sulong_home>",
+        "llvm.home": "<path:SULONG_HOME>",
       },
       "checkstyle" : "com.oracle.truffle.llvm.runtime",
       "javaCompliance" : "1.8+",
@@ -320,17 +320,10 @@ suite = {
 
     "bootstrap-toolchain-launchers": {
       "subDir": "projects",
-      "class" : "ToolchainLauncherProject",
-      "native": True,
-      "vpath": True,
-      "platformDependent": True,
-      "buildEnv" : {
-        "MX_EXE" : "<mx_exe>",
-        "SUITE_DIR" : "<path:bootstrap-toolchain-launchers>/../..",
-        "PLATFORM" : "native",
-      },
+      "class" : "BootstrapToolchainLauncherProject",
       "buildDependencies" : [
         "SULONG_LLVM_ORG",
+        "com.oracle.truffle.llvm.toolchain.launchers",
       ],
       "license" : "BSD-new",
     },
@@ -472,11 +465,6 @@ suite = {
       },
       "license" : "BSD-new",
     },
-    "sulong-doc": {
-      "class": "SulongDocsProject",
-      "outputDir": "",
-      "prefix": "",
-    },
 
     "com.oracle.truffle.llvm.tests.debug.native" : {
       "subDir" : "tests",
@@ -586,6 +574,27 @@ suite = {
       "variants" : ["O0"],
       "buildEnv" : {
         "OS" : "<os>",
+      },
+      "dependencies" : [
+        "SULONG_TEST",
+      ],
+      "testProject" : True,
+      "defaultBuild" : False,
+    },
+    "com.oracle.truffle.llvm.tests.bitcode.uncommon.native" : {
+      "subDir" : "tests",
+      "class" : "SulongTestSuite",
+      # This should be the O1 variant (and the CFLAGS buildEnv entry
+      # below should be changed to -O1) but it currently breaks the
+      # tests in the project (difference in behavior between O0 and
+      # O1). This issue is related to the vstore.ll.ignored test in
+      # that we should fix it once we have a solution for the general
+      # issue in exeuction mistmatches. Until then the Sulong behavior
+      # is the more accurate one.
+      "variants" : ["O0"],
+      "buildEnv" : {
+        "OS" : "<os>",
+        "CFLAGS" : "-O0",
       },
       "dependencies" : [
         "SULONG_TEST",
@@ -1066,6 +1075,7 @@ suite = {
       "layout" : {
         "./" : [
           "dependency:com.oracle.truffle.llvm.tests.bitcode.native/*",
+          "dependency:com.oracle.truffle.llvm.tests.bitcode.uncommon.native/*",
           "dependency:com.oracle.truffle.llvm.tests.bitcodeformat.native/*",
           "dependency:com.oracle.truffle.llvm.tests.debug.native/*",
           "dependency:com.oracle.truffle.llvm.tests.irdebug.native/*",
@@ -1093,15 +1103,6 @@ suite = {
       },
       "license" : "BSD-new",
       "testDistribution" : True,
-    },
-    "SULONG_DOC": {
-      "native": True, # Not Java
-      "relpath": True,
-      "dependencies": [
-        "sulong-doc",
-      ],
-      "description": "Sulong documentation, license",
-      "license" : "BSD-new",
     },
     "SULONG_LEGACY" : {
       "native" : True,
