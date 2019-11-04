@@ -76,6 +76,7 @@ public class LLVMLanguage extends TruffleLanguage<LLVMContext> {
      * should be passed directly using binary sources instead.
      */
     public static final String LLVM_BITCODE_BASE64_MIME_TYPE = "application/x-llvm-ir-bitcode-base64";
+    public static final String LLVM_PRINT_TOOLCHAIN_PATH_MIME_TYPE = "application/x-llvm-ir-bitcode-base64";
 
     static final String LLVM_ELF_SHARED_MIME_TYPE = "application/x-sharedlib";
     static final String LLVM_ELF_EXEC_MIME_TYPE = "application/x-executable";
@@ -95,6 +96,7 @@ public class LLVMLanguage extends TruffleLanguage<LLVMContext> {
     }
 
     public List<ContextExtension> getLanguageContextExtension() {
+        verifyContextExtensionsInitialized();
         return contextExtensions;
     }
 
@@ -108,12 +110,20 @@ public class LLVMLanguage extends TruffleLanguage<LLVMContext> {
 
     public <T extends ContextExtension> T getContextExtensionOrNull(Class<T> type) {
         CompilerAsserts.neverPartOfCompilation();
+        verifyContextExtensionsInitialized();
         for (ContextExtension ce : contextExtensions) {
             if (ce.extensionClass() == type) {
                 return type.cast(ce);
             }
         }
         return null;
+    }
+
+    private void verifyContextExtensionsInitialized() {
+        CompilerAsserts.neverPartOfCompilation();
+        if (contextExtensions == null) {
+            throw new IllegalStateException("LLVMContext is not yet initialized");
+        }
     }
 
     /**
@@ -164,16 +174,26 @@ public class LLVMLanguage extends TruffleLanguage<LLVMContext> {
             activeConfiguration = Configurations.createConfiguration(this, env.getOptions());
         }
 
-        env.registerService(new ToolchainImpl(activeConfiguration.getCapability(ToolchainConfig.class), this));
-        this.contextExtensions = activeConfiguration.createContextExtensions(env);
+        Toolchain toolchain = new ToolchainImpl(activeConfiguration.getCapability(ToolchainConfig.class), this);
+        env.registerService(toolchain);
 
-        LLVMContext context = new LLVMContext(this, env, getLanguageHome());
+        LLVMContext context = new LLVMContext(this, env, toolchain);
         return context;
     }
 
     @Override
     protected void initializeContext(LLVMContext context) {
+        this.contextExtensions = activeConfiguration.createContextExtensions(context.getEnv());
         context.initialize();
+    }
+
+    @Override
+    protected boolean patchContext(LLVMContext context, Env newEnv) {
+        boolean compatible = Configurations.areOptionsCompatible(context.getEnv().getOptions(), newEnv.getOptions());
+        if (!compatible) {
+            return false;
+        }
+        return context.patchContext(newEnv);
     }
 
     @Override
