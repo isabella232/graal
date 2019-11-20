@@ -109,7 +109,7 @@ _lib_prefix = mx.add_lib_prefix("")
 
 
 _graalvm_base_name = 'GraalVM'
-_graalvm_maven_attributes = {'groupId': 'org.graalvm'}
+_graalvm_maven_attributes = {'groupId': 'org.graalvm', 'tag': 'graalvm'}
 
 
 default_components = []
@@ -574,6 +574,7 @@ class BaseGraalVmLayoutDistribution(_with_metaclass(ABCMeta, mx.LayoutDistributi
             _add(layout, '<jre_base>/lib/graalvm/', ['dependency:' + d for d in graalvm_dists], _component, with_sources=True)
 
             for _provided_executable in _component.provided_executables:
+                _provided_executable = mx_subst.results_substitutions.substitute(_provided_executable)
                 if _component.short_name == 'vvm':
                     _add(layout, _jdk_jre_bin, 'extracted-dependency:tools:VISUALVM_PLATFORM_SPECIFIC/./' + _provided_executable, _component)
                 else:
@@ -1295,7 +1296,8 @@ class GraalVmJImageBuildTask(mx.ProjectBuildTask):
 
     def build(self):
         with_source = lambda dep: not isinstance(dep, mx.Dependency) or (_include_sources() and dep.isJARDistribution() and not dep.is_stripped())
-        mx_sdk.jlink_new_jdk(_src_jdk, self.subject.output_directory(), self.subject.deps, with_source=with_source)
+        vendor_info = {'vendor-version' : graalvm_vendor_version(get_final_graalvm_distribution())}
+        mx_sdk.jlink_new_jdk(_src_jdk, self.subject.output_directory(), self.subject.deps, with_source=with_source, vendor_info=vendor_info)
         with open(self._config_file(), 'w') as f:
             f.write('\n'.join(self._config()))
 
@@ -1539,7 +1541,7 @@ class GraalVmBashLauncherBuildTask(GraalVmNativeImageBuildTask):
         ext = 'cmd' if mx.get_os() == 'windows' else 'sh'
         _custom_launcher = self.subject.native_image_config.custom_bash_launcher
         if _custom_launcher:
-            return join(self.subject.suite.dir, _custom_launcher + "." + ext)
+            return join(self.subject.component.suite.dir, _custom_launcher + "." + ext)
         return join(_suite.mxDir, 'vm', 'launcher_template.' + ext)
 
     def native_image_needs_build(self, out_file):
@@ -1571,7 +1573,7 @@ class GraalVmBashLauncherBuildTask(GraalVmNativeImageBuildTask):
             return self.subject.native_image_config.main_class
 
         def _get_extra_jvm_args():
-            return ' '.join(self.subject.native_image_config.extra_jvm_args)
+            return mx.list_to_cmd_line(self.subject.native_image_config.extra_jvm_args)
 
         _template_subst = mx_subst.SubstitutionEngine(mx_subst.string_substitutions)
         _template_subst.register_no_arg('classpath', _get_classpath)
@@ -2492,7 +2494,6 @@ def log_graalvm_vm_name(args):
     _ = parser.parse_args(args)
     mx.log(graalvm_vm_name(get_final_graalvm_distribution(), _src_jdk))
 
-
 def graalvm_vm_name(graalvm_dist, jdk):
     """
     :type jdk_home: str
@@ -2501,10 +2502,16 @@ def graalvm_vm_name(graalvm_dist, jdk):
     out = _decode(subprocess.check_output([jdk.java, '-version'], stderr=subprocess.STDOUT)).rstrip()
     match = re.search(r'^(?P<base_vm_name>[a-zA-Z() ]+64-Bit )Server VM', out.split('\n')[-1])
     vm_name = match.group('base_vm_name') if match else ''
-    vm_name += '{} {}'.format(graalvm_dist.base_name, graalvm_dist.vm_config_name.upper()) if graalvm_dist.vm_config_name else graalvm_dist.base_name
-    vm_name += ' {}'.format(graalvm_version())
-    return vm_name
+    return vm_name + graalvm_vendor_version(graalvm_dist)
 
+def graalvm_vendor_version(graalvm_dist):
+    """
+    :type jdk_home: str
+    :rtype str:
+    """
+    vendor_version = '{} {}'.format(graalvm_dist.base_name, graalvm_dist.vm_config_name.upper()) if graalvm_dist.vm_config_name else graalvm_dist.base_name
+    vendor_version += ' {}'.format(graalvm_version())
+    return vendor_version
 
 mx.add_argument('--components', action='store', help='Comma-separated list of component names to build. Only those components and their dependencies are built.')
 mx.add_argument('--exclude-components', action='store', help='Comma-separated list of component names to be excluded from the build.')
