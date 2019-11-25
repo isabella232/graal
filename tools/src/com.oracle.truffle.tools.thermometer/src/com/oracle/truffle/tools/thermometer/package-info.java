@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017, 2018, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2015, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,22 +22,16 @@
  * or visit www.oracle.com if you need additional information or have any
  * questions.
  */
-package org.graalvm.compiler.core.common;
+
+/*
+ @ApiInfo(
+ group="To Review"
+ )
+ */
 
 /**
- * A {@linkplain RetryableBailoutException} that will be thrown if an on-going compilation in the
- * compiler was cancelled.
+ * Package containing classes implementing the Truffle Thermometer.
+ *
+ * @since 19.3.0
  */
-public final class CancellationBailoutException extends RetryableBailoutException {
-
-    private static final long serialVersionUID = 6551793589275293360L;
-
-    private CancellationBailoutException() {
-        super("Compilation cancelled.");
-    }
-
-    public static void cancelCompilation() {
-        throw new CancellationBailoutException();
-    }
-
-}
+package com.oracle.truffle.tools.thermometer;

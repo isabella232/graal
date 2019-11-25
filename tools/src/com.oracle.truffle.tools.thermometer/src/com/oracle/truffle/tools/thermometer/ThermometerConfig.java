@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017, 2018, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,22 +22,30 @@
  * or visit www.oracle.com if you need additional information or have any
  * questions.
  */
-package org.graalvm.compiler.core.common;
+package com.oracle.truffle.tools.thermometer;
 
-/**
- * A {@linkplain RetryableBailoutException} that will be thrown if an on-going compilation in the
- * compiler was cancelled.
- */
-public final class CancellationBailoutException extends RetryableBailoutException {
+public class ThermometerConfig {
 
-    private static final long serialVersionUID = 6551793589275293360L;
+    private final int samplingPeriod;
+    private final int reportingPeriod;
+    private final String iterationLocation;
 
-    private CancellationBailoutException() {
-        super("Compilation cancelled.");
+    public ThermometerConfig(int samplingPeriod, int reportingPeriod, String iterationLocation) {
+        this.samplingPeriod = samplingPeriod;
+        this.reportingPeriod = reportingPeriod;
+        this.iterationLocation = iterationLocation;
     }
 
-    public static void cancelCompilation() {
-        throw new CancellationBailoutException();
+    public int getSamplingPeriod() {
+        return samplingPeriod;
+    }
+
+    public int getReportingPeriod() {
+        return reportingPeriod;
+    }
+
+    public String getIterationLocation() {
+        return iterationLocation;
     }
 
 }

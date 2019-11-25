@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017, 2018, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,22 +22,22 @@
  * or visit www.oracle.com if you need additional information or have any
  * questions.
  */
-package org.graalvm.compiler.core.common;
+package com.oracle.truffle.tools.thermometer;
 
-/**
- * A {@linkplain RetryableBailoutException} that will be thrown if an on-going compilation in the
- * compiler was cancelled.
- */
-public final class CancellationBailoutException extends RetryableBailoutException {
+import com.oracle.truffle.api.frame.VirtualFrame;
+import com.oracle.truffle.api.instrumentation.ExecutionEventNode;
 
-    private static final long serialVersionUID = 6551793589275293360L;
+public class ThermometerSampleIterationNode extends ExecutionEventNode {
 
-    private CancellationBailoutException() {
-        super("Compilation cancelled.");
+    private final ThermometerSampler sampler;
+
+    public ThermometerSampleIterationNode(ThermometerSampler sampler) {
+        this.sampler = sampler;
     }
 
-    public static void cancelCompilation() {
-        throw new CancellationBailoutException();
+    @Override
+    protected void onEnter(VirtualFrame frame) {
+        sampler.iterationPoint();
     }
 
 }
