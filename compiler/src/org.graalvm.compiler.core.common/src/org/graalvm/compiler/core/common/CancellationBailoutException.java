@@ -32,7 +32,7 @@ public final class CancellationBailoutException extends RetryableBailoutExceptio
 
     private static final long serialVersionUID = 6551793589275293360L;
 
-    public CancellationBailoutException() {
+    private CancellationBailoutException() {
         super("Compilation cancelled.");
     }
 
