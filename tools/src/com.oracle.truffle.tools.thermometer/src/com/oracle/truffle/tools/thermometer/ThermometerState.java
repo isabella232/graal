@@ -26,6 +26,8 @@ package com.oracle.truffle.tools.thermometer;
 
 import com.oracle.truffle.api.instrumentation.CompilationState;
 
+import java.io.PrintStream;
+
 public class ThermometerState {
 
     private final long elapsedTime;
@@ -55,7 +57,7 @@ public class ThermometerState {
             if (iterationsPerSecond >= 1e5) {
                 reportedIterationsPerSecond = iterationsPerSecond / 1e6;
                 suffix = "M";
-            } else if (iterationsPerSecond >= 1e2) {
+            } else if (iterationsPerSecond >= 1e3) {
                 reportedIterationsPerSecond = iterationsPerSecond / 1e3;
                 suffix = "K";
             } else {
@@ -63,10 +65,10 @@ public class ThermometerState {
                 suffix = " ";
             }
 
-            ipsComponent = String.format("   %6.3f %s i/s", reportedIterationsPerSecond, suffix);
+            ipsComponent = String.format("  %7.3f %s i/s", reportedIterationsPerSecond, suffix);
         }
 
-        return String.format("%6.2fs  %s  %3.0f°%s   %5.2f MB  %2d ▶ %2d ▶ %2d  ( %2d, %2d )  %2d ▼",
+        return String.format("%6.2fs  %s  %3.0f°%s   %5.2f MB  %3d ▶ %2d ▶ %3d  ( %2d, %2d )  %2d ▼",
                 elapsedTime / 1e9,
                 indicator(reference),
                 sampleReading * 100,
@@ -81,17 +83,55 @@ public class ThermometerState {
     }
 
     private String indicator(ThermometerState reference) {
-        if (reference != null && compilationState.getFailed() != reference.compilationState.getFailed()) {
+        if (reference != null && compilationState.getFailed() > reference.compilationState.getFailed()) {
             return "😡";
-        } else if (reference != null && compilationState.getDeoptimizations() != reference.compilationState.getDeoptimizations()) {
+        } else if (reference != null && compilationState.getDeoptimizations() > reference.compilationState.getDeoptimizations()) {
             return "🤮";
         } else if (sampleReading < 0.5) {
             return "🥶";
-        } else if (sampleReading < 0.9 || (reference != null && reference.loadedSource < loadedSource)) {
+        } else if (sampleReading < 0.9 || (reference != null && loadedSource > reference.loadedSource)) {
             return "🤔";
         } else {
             return "😊";
         }
+    }
+
+    public void writeLog(PrintStream logStream, boolean reportIPS) {
+        logStream.print('{');
+
+        logStream.print("\"elapsedTime\":");
+        logStream.print(elapsedTime);
+
+        logStream.print(",\"sampleReading\":");
+        logStream.print(sampleReading);
+
+        if (reportIPS) {
+            logStream.print(",\"iterationsPerSecond\":");
+            logStream.print(iterationsPerSecond);
+        }
+
+        logStream.print(",\"loadedSource\":");
+        logStream.print(loadedSource);
+
+        logStream.print(",\"queued\":");
+        logStream.print(compilationState.getQueued());
+
+        logStream.print(",\"running\":");
+        logStream.print(compilationState.getRunning());
+
+        logStream.print(",\"finished\":");
+        logStream.print(compilationState.getFinished());
+
+        logStream.print(",\"failed\":");
+        logStream.print(compilationState.getFailed());
+
+        logStream.print(",\"dequeued\":");
+        logStream.print(compilationState.getDequeued());
+
+        logStream.print(",\"deoptimizations\":");
+        logStream.print(compilationState.getDeoptimizations());
+
+        logStream.println('}');
     }
 
 }
