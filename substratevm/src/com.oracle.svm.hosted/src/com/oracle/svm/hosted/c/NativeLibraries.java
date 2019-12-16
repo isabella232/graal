@@ -48,6 +48,7 @@ import org.graalvm.nativeimage.c.CContext;
 import org.graalvm.nativeimage.c.constant.CConstant;
 import org.graalvm.nativeimage.c.constant.CEnum;
 import org.graalvm.nativeimage.c.function.CFunction;
+import org.graalvm.nativeimage.c.function.CLibrary;
 import org.graalvm.nativeimage.c.struct.CPointerTo;
 import org.graalvm.nativeimage.c.struct.CStruct;
 import org.graalvm.nativeimage.c.struct.RawStructure;
@@ -96,6 +97,7 @@ public final class NativeLibraries {
     private final ResolvedJavaType enumType;
     private final ResolvedJavaType locationIdentityType;
 
+    private final LinkedHashSet<CLibrary> annotated;
     private final List<String> libraries;
     private final List<String> staticLibraries;
     private final LinkedHashSet<String> libraryPaths;
@@ -128,6 +130,8 @@ public final class NativeLibraries {
         byteArrayType = metaAccess.lookupJavaType(byte[].class);
         enumType = metaAccess.lookupJavaType(Enum.class);
         locationIdentityType = metaAccess.lookupJavaType(LocationIdentity.class);
+
+        annotated = new LinkedHashSet<>();
 
         /*
          * Libraries can be added during the static analysis, which runs multi-threaded. So the
@@ -174,11 +178,11 @@ public final class NativeLibraries {
             if (defaultBuiltInLibraries.stream().allMatch(hasStaticLibrary)) {
                 staticLibsDir = jdkLibDir;
             } else {
-                hint = defaultBuiltInLibraries.stream().filter(hasStaticLibrary.negate()).collect(Collectors.joining(", ", "Missing libraries:", ""));
+                hint = System.lineSeparator() + defaultBuiltInLibraries.stream().filter(hasStaticLibrary.negate()).collect(Collectors.joining(", ", "Missing libraries:", ""));
             }
         } catch (IOException e) {
             /* Fallthrough to next strategy */
-            hint = e.getMessage();
+            hint = System.lineSeparator() + e.getMessage();
         }
 
         if (staticLibsDir == null) {
@@ -190,12 +194,12 @@ public final class NativeLibraries {
         } else {
             if (!NativeImageOptions.ExitAfterRelocatableImageWrite.getValue()) {
                 /* Fail if we will statically link JDK libraries but do not have them available */
-                String message = "Building images for " + ImageSingletons.lookup(Platform.class).getClass().getName() + " requires static JDK libraries." +
-                                "\nUse JDK from https://github.com/graalvm/openjdk8-jvmci-builder/releases or https://github.com/graalvm/labs-openjdk-11/releases";
-                if (hint != null) {
-                    message += "\n" + hint;
-                }
-                UserError.guarantee(!Platform.includedIn(InternalPlatform.PLATFORM_JNI.class), message);
+                UserError.guarantee(!Platform.includedIn(InternalPlatform.PLATFORM_JNI.class),
+                                "Building images for %s requires static JDK libraries.%nUse JDK from %s or %s%s",
+                                ImageSingletons.lookup(Platform.class).getClass().getName(),
+                                "https://github.com/graalvm/openjdk8-jvmci-builder/releases",
+                                "https://github.com/graalvm/labs-openjdk-11/releases",
+                                hint);
             }
         }
         return libraryPaths;
@@ -248,6 +252,10 @@ public final class NativeLibraries {
         }
     }
 
+    public void addAnnotated(CLibrary library) {
+        annotated.add(library);
+    }
+
     public void addLibrary(String library, boolean requireStatic) {
         (requireStatic ? staticLibraries : libraries).add(library);
     }
@@ -286,7 +294,7 @@ public final class NativeLibraries {
                                 .filter(path -> path.getFileName().toString().endsWith(libSuffix))
                                 .forEachOrdered(candidate -> allStaticLibs.put(candidate.getFileName(), candidate));
             } catch (IOException e) {
-                UserError.abort("Invalid library path " + libraryPath, e);
+                UserError.abort(e, "Invalid library path " + libraryPath);
             }
         }
         return allStaticLibs;
@@ -303,7 +311,7 @@ public final class NativeLibraries {
             try {
                 unit = ReflectionUtil.newInstance(compilationUnit);
             } catch (ReflectionUtilError ex) {
-                throw UserError.abort("can't construct compilation unit " + compilationUnit.getCanonicalName(), ex.getCause());
+                throw UserError.abort(ex.getCause(), "can't construct compilation unit " + compilationUnit.getCanonicalName());
             }
 
             if (classInitializationSupport != null) {
@@ -417,5 +425,16 @@ public final class NativeLibraries {
 
     public ConstantReflectionProvider getConstantReflection() {
         return constantReflection;
+    }
+
+    public boolean processAnnotated() {
+        if (annotated.isEmpty()) {
+            return false;
+        }
+        for (CLibrary lib : annotated) {
+            addLibrary(lib.value(), lib.requireStatic());
+        }
+        annotated.clear();
+        return true;
     }
 }

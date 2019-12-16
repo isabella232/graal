@@ -27,6 +27,7 @@ package org.graalvm.component.installer;
 import java.io.File;
 import java.io.IOError;
 import java.io.IOException;
+import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.file.AccessDeniedException;
@@ -238,8 +239,14 @@ public class ComponentInstaller {
 
         finddGraalHome();
         e.setGraalHome(graalHomePath);
-        e.setLocalRegistry(new ComponentRegistry(e, new DirectoryStorage(
-                        e, storagePath, graalHomePath)));
+        // Use our own GraalVM's trust store contents; also bypasses embedded trust store
+        // when running AOT.
+        Path trustStorePath = SystemUtils.resolveRelative(SystemUtils.getRuntimeBaseDir(e.getGraalHomePath()),
+                        "lib/security/cacerts"); // NOI18N
+        System.setProperty("javax.net.ssl.trustStore", trustStorePath.normalize().toString()); // NOI18N
+        DirectoryStorage storage = new DirectoryStorage(e, storagePath, graalHomePath);
+        storage.setJavaVersion("" + SystemUtils.getJavaMajorVersion(e));
+        e.setLocalRegistry(new ComponentRegistry(e, storage));
         FileOperations fops = FileOperations.createPlatformInstance(e, e.getGraalHomePath());
         e.setFileOperations(fops);
 
@@ -301,13 +308,6 @@ public class ComponentInstaller {
         }
         if (input.hasOption(Commands.OPTION_URLS)) {
             srcCount++;
-            // catalogs are allowed to resolve dependnencies for files
-            if (input.hasOption(Commands.OPTION_CATALOG)) {
-                srcCount++;
-            }
-            if (input.hasOption(Commands.OPTION_FOREIGN_CATALOG)) {
-                srcCount++;
-            }
         }
         if (srcCount > 1) {
             error("ERROR_MultipleSourcesUnsupported");
@@ -340,6 +340,7 @@ public class ComponentInstaller {
                                 downloader.getOverrideCatalogSpec());
             }
             CatalogContents col = new CatalogContents(env, nDownloader.getStorage(), lreg);
+            col.setRemoteEnabled(downloader.isRemoteSourcesAllowed());
             return col;
         };
         env.setCatalogFactory(cFactory);
@@ -379,7 +380,8 @@ public class ComponentInstaller {
         if (setIterable) {
             env.setFileIterable(new CatalogIterable(env, env));
         }
-        downloader.setRemoteSourcesAllowed(builtinsImplied || env.hasOption(Commands.OPTION_CATALOG));
+        downloader.setRemoteSourcesAllowed(builtinsImplied || env.hasOption(Commands.OPTION_CATALOG) ||
+                        env.hasOption(Commands.OPTION_FOREIGN_CATALOG));
         return -1;
     }
 
@@ -519,7 +521,23 @@ public class ComponentInstaller {
         if (envVar != null) {
             def = envVar;
         }
-        return input.getParameter(CommonConstants.SYSPROP_CATALOG_URL, def, true);
+        String s = input.getParameter(CommonConstants.SYSPROP_CATALOG_URL, def, true);
+        if (s == null) {
+            return null;
+        }
+        try {
+            URI check = URI.create(s);
+            if (check.getScheme() == null || check.getScheme().length() < 2) {
+                Path p = SystemUtils.fromUserString(s);
+                // convert plain filename to file:// URL.
+                if (Files.isReadable(p)) {
+                    return p.toFile().toURI().toString();
+                }
+            }
+        } catch (IllegalArgumentException ex) {
+            // expected, use the argument as it is.
+        }
+        return s;
     }
 
     private String getReleaseCatalogURL() {

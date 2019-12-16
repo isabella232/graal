@@ -24,9 +24,12 @@
  */
 package com.oracle.svm.configure.trace;
 
+import static com.oracle.svm.configure.trace.LazyValueUtils.lazyValue;
+
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 import com.oracle.svm.configure.config.ConfigurationMemberKind;
 import com.oracle.svm.configure.config.ConfigurationMethod;
@@ -34,7 +37,8 @@ import com.oracle.svm.configure.config.ProxyConfiguration;
 import com.oracle.svm.configure.config.ResourceConfiguration;
 import com.oracle.svm.configure.config.SignatureUtil;
 import com.oracle.svm.configure.config.TypeConfiguration;
-import org.graalvm.compiler.phases.common.LazyValue;
+
+import jdk.vm.ci.meta.MetaUtil;
 
 class ReflectionProcessor extends AbstractProcessor {
     private final AccessAdvisor advisor;
@@ -79,12 +83,14 @@ class ReflectionProcessor extends AbstractProcessor {
             case "getSystemResourceAsStream":
             case "getResources":
             case "getSystemResources":
-                resourceConfiguration.add(singleElement(args));
+                String literal = singleElement(args);
+                String regex = Pattern.quote(literal);
+                resourceConfiguration.add(regex);
                 return;
         }
         String clazz = (String) entry.get("class");
         String callerClass = (String) entry.get("caller_class");
-        if (advisor.shouldIgnore(new LazyValue<>(() -> callerClass))) {
+        if (advisor.shouldIgnoreCaller(lazyValue(callerClass))) {
             return;
         }
         ConfigurationMemberKind memberKind = ConfigurationMemberKind.PUBLIC;
@@ -182,7 +188,12 @@ class ReflectionProcessor extends AbstractProcessor {
             }
 
             case "newInstance": {
-                configuration.getOrCreateType(clazz).addMethod(ConfigurationMethod.CONSTRUCTOR_NAME, "()V", ConfigurationMemberKind.DECLARED);
+                if (clazz.equals("java.lang.reflect.Array")) { // reflective array instantiation
+                    String qualifiedJavaName = MetaUtil.internalNameToJava((String) args.get(0), true, false);
+                    configuration.getOrCreateType(qualifiedJavaName);
+                } else {
+                    configuration.getOrCreateType(clazz).addMethod(ConfigurationMethod.CONSTRUCTOR_NAME, "()V", ConfigurationMemberKind.DECLARED);
+                }
                 break;
             }
         }

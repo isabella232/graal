@@ -347,8 +347,6 @@ public class CompileQueue {
             // Checking @MustNotSynchronize annotations does not take long enough to justify a
             // timer.
             MustNotSynchronizeAnnotationChecker.check(debug, universe.getMethods());
-            afterParse(debug);
-            performAfterParseCanonicalization();
 
             if (SubstrateOptions.AOTInline.getValue() && SubstrateOptions.AOTTrivialInline.getValue()) {
                 try (StopTimer ignored = new Timer(imageName, "(inline)").start()) {
@@ -369,29 +367,10 @@ public class CompileQueue {
         }
     }
 
-    private void performAfterParseCanonicalization() throws InterruptedException {
-        PhaseSuite<HighTierContext> afterParseSuite = afterParseCanonicalization();
-        executor.init();
-        for (HostedMethod method : universe.getMethods()) {
-            if (method.compilationInfo.hasDefaultParseFunction() && method.compilationInfo.getGraph() != null) {
-                HostedProviders providers = (HostedProviders) runtimeConfig.lookupBackend(method).getProviders();
-                executor.execute(debug -> {
-                    method.compilationInfo.getGraph().resetDebug(debug);
-                    afterParseSuite.apply(method.compilationInfo.getGraph(), new HighTierContext(providers, afterParseSuite, getOptimisticOpts()));
-                    assert GraphOrder.assertSchedulableGraph(method.compilationInfo.getGraph());
-                });
-            }
-        }
-        executor.start();
-        executor.complete();
-        executor.shutdown();
-    }
-
     private boolean suitesNotCreated() {
         return regularSuites == null && deoptTargetLIRSuites == null && regularLIRSuites == null && deoptTargetSuites == null;
     }
 
-    /* This can be moved to the constructor now. */
     private void createSuites() {
         regularSuites = NativeImageGenerator.createSuites(featureHandler, runtimeConfig, snippetReflection, true);
         deoptTargetSuites = NativeImageGenerator.createSuites(featureHandler, runtimeConfig, snippetReflection, true);
@@ -530,10 +509,6 @@ public class CompileQueue {
     private void ensureParsedForDeoptTesting(HostedMethod method) {
         method.compilationInfo.canDeoptForTesting = true;
         ensureParsed(universe.createDeoptTarget(method), new EntryPointReason());
-    }
-
-    @SuppressWarnings("unused")
-    protected void afterParse(DebugContext debug) throws InterruptedException {
     }
 
     private void checkTrivial(HostedMethod method) {
@@ -746,6 +721,11 @@ public class CompileQueue {
 
                 method.compilationInfo.graph = graph;
 
+                afterParse(method);
+                PhaseSuite<HighTierContext> afterParseSuite = afterParseCanonicalization();
+                afterParseSuite.apply(method.compilationInfo.graph, new HighTierContext(providers, afterParseSuite, getOptimisticOpts()));
+                assert GraphOrder.assertSchedulableGraph(method.compilationInfo.getGraph());
+
                 for (Invoke invoke : graph.getInvokes()) {
                     if (!canBeUsedForInlining(invoke)) {
                         invoke.setUseForInlining(false);
@@ -758,7 +738,18 @@ public class CompileQueue {
                             ensureParsed(invokeImplementation, new VirtualCallReason(method, invokeImplementation, reason));
                         }
                     } else {
-                        if (invokeTarget.wrapped.isImplementationInvoked()) {
+                        /*
+                         * Direct calls to instance methods (invokespecial bytecode or devirtualized
+                         * calls) can go to methods that are unreachable if the receiver is always
+                         * null. At this time, we do not know the receiver types, so we filter such
+                         * invokes by looking at the reachability status from the point of view of
+                         * the static analysis. Note that we cannot use "isImplementationInvoked"
+                         * because (for historic reasons) it also returns true if a method has a
+                         * graph builder plugin registered. All graph builder plugins are already
+                         * applied during parsing before we reach this point, so we look at the
+                         * "simple" implementation invoked status.
+                         */
+                        if (invokeTarget.wrapped.isSimplyImplementationInvoked()) {
                             handleSpecialization(method, targetNode, invokeTarget, invokeTarget);
                             ensureParsed(invokeTarget, new DirectCallReason(method, reason));
                         }
@@ -774,6 +765,10 @@ public class CompileQueue {
         } catch (Throwable e) {
             throw debug.handle(e);
         }
+    }
+
+    @SuppressWarnings("unused")
+    protected void afterParse(HostedMethod method) {
     }
 
     protected OptionValues getCustomizedOptions(DebugContext debug) {

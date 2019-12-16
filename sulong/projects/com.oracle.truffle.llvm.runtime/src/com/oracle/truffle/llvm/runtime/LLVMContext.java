@@ -63,9 +63,11 @@ import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.nodes.ControlFlowException;
 import com.oracle.truffle.api.nodes.DirectCallNode;
 import com.oracle.truffle.api.nodes.RootNode;
+import com.oracle.truffle.api.utilities.AssumedValue;
 import com.oracle.truffle.llvm.api.Toolchain;
 import com.oracle.truffle.llvm.instruments.trace.LLVMTracerInstrument;
 import com.oracle.truffle.llvm.runtime.LLVMArgumentBuffer.LLVMArgumentArray;
+import com.oracle.truffle.llvm.runtime.LLVMLanguage.Loader;
 import com.oracle.truffle.llvm.runtime.datalayout.DataLayout;
 import com.oracle.truffle.llvm.runtime.debug.LLVMSourceContext;
 import com.oracle.truffle.llvm.runtime.debug.type.LLVMSourceType;
@@ -114,7 +116,7 @@ public final class LLVMContext {
     private final Map<String, String> environment;
     private final ArrayList<LLVMNativePointer> caughtExceptionStack = new ArrayList<>();
     private ConcurrentHashMap<String, Integer> nativeCallStatistics;        // effectively final
-                                                                            // after initialization
+    // after initialization
 
     private final HandleContainer handleContainer;
     private final HandleContainer derefHandleContainer;
@@ -130,6 +132,9 @@ public final class LLVMContext {
 
     // we are not able to clean up ThreadLocals properly, so we are using maps instead
     private final Map<Thread, Object> tls = new ConcurrentHashMap<>();
+
+    // private for storing the globals of each bcode file;
+    @CompilationFinal(dimensions = 2) private AssumedValue<LLVMPointer>[][] globalStorage;
 
     // signals
     private final LLVMNativePointer sigDfl;
@@ -166,6 +171,7 @@ public final class LLVMContext {
         }
     }
 
+    @SuppressWarnings("unchecked")
     LLVMContext(LLVMLanguage language, Env env, Toolchain toolchain) {
         this.language = language;
         this.libsulongDatalayout = null;
@@ -179,8 +185,8 @@ public final class LLVMContext {
         this.sigIgn = LLVMNativePointer.create(1);
         this.sigErr = LLVMNativePointer.create(-1);
         LLVMMemory memory = language.getCapability(LLVMMemory.class);
-        this.handleContainer = memory.createHandleContainer(false);
-        this.derefHandleContainer = memory.createHandleContainer(true);
+        this.handleContainer = memory.createHandleContainer(false, language.getNoCommonHandleAssumption());
+        this.derefHandleContainer = memory.createHandleContainer(true, language.getNoDerefHandleAssumption());
         this.functionPointerRegistry = new LLVMFunctionPointerRegistry();
         this.interopTypeRegistry = new LLVMInteropType.InteropTypeRegistry();
         this.sourceContext = new LLVMSourceContext();
@@ -198,6 +204,8 @@ public final class LLVMContext {
         addLibraryPaths(SulongEngineOption.getPolyglotOptionSearchPaths(env));
 
         pThreadContext = new LLVMPThreadContext(this);
+
+        globalStorage = new AssumedValue[10][];
     }
 
     boolean patchContext(Env newEnv) {
@@ -273,6 +281,8 @@ public final class LLVMContext {
             // add internal library location also to the external library lookup path
             addLibraryPath(internalLibraryPath.toString());
         }
+        Loader loader = getLanguage().getCapability(Loader.class);
+        loader.loadDefaults(this, internalLibraryPath);
         if (env.getOptions().get(SulongEngineOption.PRINT_TOOLCHAIN_PATH)) {
             LLVMFunctionDescriptor functionDescriptor = createFunctionDescriptor(LLVMPrintToolchainPath.NAME, new FunctionType(VoidType.INSTANCE, new Type[0], false),
                             new LLVMFunctionDescriptor.UnresolvedFunction(), null);
@@ -596,6 +606,26 @@ public final class LLVMContext {
 
     public LLVMScope getGlobalScope() {
         return globalScope;
+    }
+
+    public AssumedValue<LLVMPointer>[] findGlobalTable(int id) {
+        return globalStorage[id];
+    }
+
+    @SuppressWarnings("unchecked")
+    @TruffleBoundary
+    public void registerGlobalTable(int index, AssumedValue<LLVMPointer>[] target) {
+        synchronized (this) {
+            if (index < globalStorage.length) {
+                globalStorage[index] = target;
+            } else {
+                int newLength = (index + 1) + ((index + 1) / 2);
+                AssumedValue<LLVMPointer>[][] temp = new AssumedValue[newLength][];
+                System.arraycopy(globalStorage, 0, temp, 0, globalStorage.length);
+                globalStorage = temp;
+                globalStorage[index] = target;
+            }
+        }
     }
 
     @TruffleBoundary

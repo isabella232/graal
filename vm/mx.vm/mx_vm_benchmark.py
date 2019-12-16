@@ -71,7 +71,7 @@ class GraalVm(mx_benchmark.OutputCapturingJavaVm):
 
     def run_java(self, args, out=None, err=None, cwd=None, nonZeroIsFatal=False):
         """Run 'java' workloads."""
-        self.extract_vm_info()
+        self.extract_vm_info(args)
         return mx.run([os.path.join(mx_sdk_vm_impl.graalvm_home(fatalIfMissing=True), 'bin', 'java')] + args, out=out, err=err, cwd=cwd, nonZeroIsFatal=nonZeroIsFatal)
 
     def run_lang(self, cmd, args, cwd):
@@ -80,7 +80,7 @@ class GraalVm(mx_benchmark.OutputCapturingJavaVm):
 
     def run_launcher(self, cmd, args, cwd):
         """Run the 'cmd' command in the 'bin' directory."""
-        self.extract_vm_info()
+        self.extract_vm_info(args)
         out = mx.TeeOutputCapture(mx.OutputCapture())
         args = self.post_process_launcher_command_line_args(args)
         mx.log("Running '{}' on '{}' with args: '{}'".format(cmd, self.name(), args))
@@ -304,7 +304,8 @@ class NativeImageVM(GraalVm):
                 i += 1
 
             # Build the final image
-            pgo_args = ['--pgo=' + profile_path] if self.pgo_instrumented_iterations > 0 or self.hotspot_pgo else []
+            pgo_verification_output_path = os.path.join(config.output_dir, executable_name + '-probabilities.log')
+            pgo_args = ['--pgo=' + profile_path, '-H:+VerifyPGOProfiles', '-H:VerificationDumpFile=' + pgo_verification_output_path] if self.pgo_instrumented_iterations > 0 or self.hotspot_pgo else []
             final_image_args = base_image_build_args + pgo_args
             mx.log('Building the final image with: ')
             mx.log(' ' + ' '.join([pipes.quote(str(arg)) for arg in final_image_args]))

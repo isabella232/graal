@@ -52,10 +52,18 @@ final class CoverageCLI {
         summaryHeaderLen = summaryHeader.length();
     }
 
+    private static String getName(Source source) {
+        if (source.getPath() == null) {
+            return source.getName();
+        } else {
+            return source.getPath();
+        }
+    }
+
     private static String getHistogramLineFormat(SourceCoverage[] coverage) {
         int maxNameLength = 10;
         for (SourceCoverage source : coverage) {
-            final String name = source.getName();
+            final String name = getName(source.getSource());
             maxNameLength = Math.max(maxNameLength, name.length());
         }
         return " %-" + maxNameLength + "s |  %10s |  %7s |  %7s ";
@@ -91,20 +99,29 @@ final class CoverageCLI {
     }
 
     private static String lineCoverage(LineCoverage lineCoverage) {
-        return percentFormat(100 * lineCoverage.getCoverage());
+        final double coverage = lineCoverage.getCoverage();
+        if (Double.isNaN(coverage)) {
+            return "";
+        }
+        return percentFormat(100 * coverage);
     }
 
     void printLinesOutput() {
         printLine();
         printLinesLegend();
         for (SourceCoverage sourceCoverage : coverage) {
-            final String name = sourceCoverage.getName();
+            final Source source = sourceCoverage.getSource();
+            final String name = getName(source);
             printLine();
             printSummaryHeader();
             final LineCoverage lineCoverage = new LineCoverage(sourceCoverage, strictLines);
             out.println(String.format(format, name, statementCoverage(sourceCoverage), lineCoverage(lineCoverage), rootCoverage(sourceCoverage)));
             out.println();
-            printLinesOfSource(sourceCoverage.getSource(), lineCoverage);
+            if (source.hasCharacters() || source.hasBytes()) {
+                printLinesOfSource(source, lineCoverage);
+            } else {
+                out.println("NO CONTENT AVAILABLE");
+            }
         }
         printLine();
     }
@@ -134,7 +151,7 @@ final class CoverageCLI {
         printSummaryHeader();
         printLine();
         for (SourceCoverage sourceCoverage : coverage) {
-            final String name = sourceCoverage.getName();
+            final String name = getName(sourceCoverage.getSource());
             final String line = String.format(format, name,
                             statementCoverage(sourceCoverage),
                             lineCoverage(new LineCoverage(sourceCoverage, strictLines)),
@@ -148,7 +165,7 @@ final class CoverageCLI {
         Arrays.sort(coverage, new Comparator<SourceCoverage>() {
             @Override
             public int compare(SourceCoverage o1, SourceCoverage o2) {
-                return o1.getName().compareTo(o2.getName());
+                return getName(o1.getSource()).compareTo(getName(o2.getSource()));
             }
         });
     }
