@@ -143,13 +143,13 @@ class SafeDirectoryUpdater(object):
 
     def __exit__(self, exc_type, exc_value, traceback):
         if exc_type is not None:
-            shutil.rmtree(self.workspace)
+            mx.rmtree(self.workspace)
             raise
 
         # Try delete the target directory if it existed prior to creating
         # self.workspace and has not been modified in between.
         if self.target_timestamp.timestamp is not None and self.target_timestamp.timestamp == mx.TimeStampFile(self.target).timestamp:
-            old_target = join(self.workspace, 'to_deleted_' + basename(self.target))
+            old_target = join(self.workspace, 'to_delete_' + basename(self.target))
             try:
                 os.rename(self.target, old_target)
             except:
@@ -166,7 +166,7 @@ class SafeDirectoryUpdater(object):
                 # Silently assume another process won the race to create self.target
                 pass
 
-        shutil.rmtree(self.workspace)
+        mx.rmtree(self.workspace)
 
 def _check_jvmci_version(jdk):
     """
@@ -570,7 +570,7 @@ def compiler_gate_runner(suites, unit_test_runs, bootstrap_tests, tasks, extraVM
             try:
                 makegraaljdk_cli(['-a', join(ws, 'graaljdk-' + str(jdk.javaCompliance) + '.tar'), '-b', graaljdk])
             finally:
-                shutil.rmtree(ws)
+                mx.rmtree(ws)
 
     # Run ctw against rt.jar on hosted
     with Task('CTW:hosted', tasks, tags=GraalTags.ctw) as t:
@@ -805,6 +805,10 @@ def _unittest_config_participant(config):
         # access JVMCI loaded classes.
         vmArgs.append('-XX:-UseJVMCIClassLoader')
 
+    # Always run unit tests without UseJVMCICompiler unless explicitly requested
+    if _get_XX_option_value(vmArgs, 'UseJVMCICompiler', None) is None:
+        vmArgs.append('-XX:-UseJVMCICompiler')
+
     return (vmArgs, mainClass, mainClassArgs)
 
 mx_unittest.add_config_participant(_unittest_config_participant)
@@ -917,7 +921,7 @@ class StdoutUnstripping:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        if self.mapFiles:
+        if self.mapFiles and self.capture:
             try:
                 with tempfile.NamedTemporaryFile(mode='w') as inputFile:
                     data = self.capture.data
@@ -1194,18 +1198,34 @@ def _update_graaljdk(src_jdk, dst_jdk_dir=None, root_module_names=None, export_t
     # may have changed and we want to pick up these changes.
     source_jdk_timestamps_file = dst_jdk_dir + '.source_jdk_timestamps'
     timestamps = []
+    nl = '\n'
     for root, _, filenames in os.walk(jdk.home):
         for name in filenames:
             ts = mx.TimeStampFile(join(root, name))
             timestamps.append(str(ts))
-    jdk_timestamps = os.linesep.join(timestamps)
+    timestamps = sorted(timestamps)
+    jdk_timestamps = jdk.home + nl + nl.join(timestamps)
+    jdk_timestamps_outdated = False
     if exists(source_jdk_timestamps_file):
         with open(source_jdk_timestamps_file) as fp:
             old_jdk_timestamps = fp.read()
         if old_jdk_timestamps != jdk_timestamps:
-            update_reason = 'source JDK was updated'
-    with open(source_jdk_timestamps_file, 'w') as fp:
-        fp.write(jdk_timestamps)
+            jdk_timestamps_outdated = True
+            old_jdk_home = old_jdk_timestamps.split(nl, 1)[0]
+            if old_jdk_home == jdk.home:
+                import difflib
+                old_timestamps = old_jdk_timestamps.split(nl)
+                diff = difflib.unified_diff(timestamps, old_timestamps, 'new_timestamps.txt', 'old_timestamps.txt')
+                update_reason = 'source JDK was updated as shown by following time stamps diff:{}{}'.format(nl, nl.join(diff))
+            else:
+                update_reason = 'source JDK was changed from {} to {}'.format(old_jdk_home, jdk.home)
+    else:
+        jdk_timestamps_outdated = True
+
+    if jdk_timestamps_outdated:
+        with mx.SafeFileCreation(source_jdk_timestamps_file) as sfc:
+            with open(sfc.tmpPath, 'w') as fp:
+                fp.write(jdk_timestamps)
 
     jvmci_release_file = mx.TimeStampFile(join(dst_jdk_dir, 'release.jvmci'))
     if update_reason is None:
@@ -1219,15 +1239,14 @@ def _update_graaljdk(src_jdk, dst_jdk_dir=None, root_module_names=None, export_t
     if update_reason is None:
         return dst_jdk_dir, False
 
-    mx.log('Updating/creating {} from {} since {}'.format(dst_jdk_dir, src_jdk.home, update_reason))
-
     with SafeDirectoryUpdater(dst_jdk_dir) as sdu:
         tmp_dst_jdk_dir = sdu.directory
+        mx.log('Updating/creating {} from {} using intermediate directory {} since {}'.format(dst_jdk_dir, src_jdk.home, tmp_dst_jdk_dir, update_reason))
         def _copy_file(src, dst):
             mx.log('Copying {} to {}'.format(src, dst))
             shutil.copyfile(src, dst)
 
-        vm_name = 'Graal'
+        vm_name = 'Server VM Graal'
         for d in _graal_config().jvmci_dists:
             s = ':' + d.suite.name + '_' + d.suite.version()
             if s not in vm_name:
@@ -1304,7 +1323,7 @@ def _update_graaljdk(src_jdk, dst_jdk_dir=None, root_module_names=None, export_t
         out = mx.LinesOutputCapture()
         mx.run([jdk.java, '-version'], err=out)
         line = None
-        pattern = re.compile(r'(.* )(?:Server|Graal) VM (?:\d+\.\d+ )?\((?:[a-zA-Z]+ )?build.*')
+        pattern = re.compile(r'(.* )(?:Server|Graal) VM (?:\d+\.\d+ |[a-zA-Z]+ )?\((?:[a-zA-Z]+ )?build.*')
         for line in out.lines:
             m = pattern.match(line)
             if m:

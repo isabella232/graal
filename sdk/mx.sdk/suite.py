@@ -87,6 +87,40 @@ suite = {
       },
       "license" : "BSD-new"
     },
+    "LLVM_ORG" : {
+      "os_arch" : {
+        "linux" : {
+          "amd64" : {
+            "urls" : ["https://lafo.ssw.uni-linz.ac.at/pub/llvm-org/llvm-llvmorg-8.0.0-4-ge74b3bb77d-bg85b0cfd334-linux-amd64.tar.gz"],
+            "sha1" : "e853f32336ca58d2077717420a9ba76b9ac9aab5",
+          },
+          "aarch64" : {
+            "urls" : ["https://lafo.ssw.uni-linz.ac.at/pub/llvm-org/llvm-llvmorg-8.0.0-4-ge74b3bb77d-bg85b0cfd334-linux-aarch64.tar.gz"],
+            "sha1" : "d2f502b216ef2689a79caa1a9f844be0f716da01",
+          }
+        },
+        "darwin" : {
+          "amd64" : {
+            "urls" : ["https://lafo.ssw.uni-linz.ac.at/pub/llvm-org/llvm-llvmorg-8.0.0-4-ge74b3bb77d-bg85b0cfd334-darwin-amd64.tar.gz"],
+            "sha1" : "11713f3d9c76d025b482771ef9ea45689cf50cb1",
+          }
+        },
+        "<others>": {
+            "<others>": {
+                "optional": True,
+            }
+        }
+      }
+    },
+    "LLVM_ORG_COMPILER_RT_LINUX" : {
+      # we really want linux-amd64, also on non-linux and non-amd64 platforms for cross-compilation
+      "urls" : ["https://lafo.ssw.uni-linz.ac.at/pub/llvm-org/compiler-rt-llvmorg-8.0.0-4-ge74b3bb77d-bg85b0cfd334-linux-amd64.tar.gz"],
+      "sha1" : "85aa08cfe1b28280d8267dc9ae2ef80463541d46",
+    },
+    "LLVM_ORG_LIBCXX_SRC" : {
+      "urls" : ["https://lafo.ssw.uni-linz.ac.at/pub/llvm-org/libcxx-src-llvmorg-8.0.0-4-ge74b3bb77d-bg85b0cfd334.tar.gz"],
+      "sha1" : "5e291cefe0beb2e2e3784b5aaac621c5081de5ef",
+    },
   },
   "projects" : {
     "org.graalvm.options" : {
@@ -309,6 +343,24 @@ suite = {
       ],
       "javadocType": "api",
       "description" : """GraalVM TCK SPI""",
+    },
+    "LLVM_TOOLCHAIN": {
+      "native": True,
+      "description": "LLVM with general purpose patches used by Sulong and Native Image",
+      "layout": {
+        "./": [
+          "extracted-dependency:LLVM_ORG",
+          "extracted-dependency:LLVM_ORG_COMPILER_RT_LINUX",
+          "file:3rd_party_license_llvm-toolchain.txt",
+        ],
+        "./patches/" : [
+          "file:../sulong/patches/*",
+          # "file:../substratevm/patches/*"
+        ],
+      },
+      "platformDependent" : True,
+      "maven": False,
+      "license" : "NCSA",
     },
   },
 }

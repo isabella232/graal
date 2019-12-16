@@ -278,9 +278,13 @@ public class NativeImageGeneratorRunner implements ImageBuildTask {
                          */
                         javaMainMethod = ReflectionUtil.lookupMethod(mainClass, mainEntryPointName, String[].class);
                     } catch (ReflectionUtilError ex) {
-                        throw UserError.abort("Method '" + mainClass.getName() + "." + mainEntryPointName + "' is declared as the main entry point but it can not be found. " +
-                                        "Make sure that class '" + mainClass.getName() + "' is on the classpath and that method '" + mainEntryPointName + "(String[])' exists in that class.",
-                                        ex.getCause());
+                        throw UserError.abort(ex.getCause(),
+                                        String.format("Method '%s.%s' is declared as the main entry point but it can not be found. " +
+                                                        "Make sure that class '%s' is on the classpath and that method '%s(String[])' exists in that class.",
+                                                        mainClass.getName(),
+                                                        mainEntryPointName,
+                                                        mainClass.getName(),
+                                                        mainEntryPointName));
                     }
 
                     if (javaMainMethod.getReturnType() != void.class) {
@@ -321,8 +325,13 @@ public class NativeImageGeneratorRunner implements ImageBuildTask {
             if (compilationExecutor != null) {
                 compilationExecutor.shutdownNow();
             }
-            e.getReason().ifPresent(NativeImageGeneratorRunner::info);
-            return 3;
+            if (e.getReason().isPresent()) {
+                NativeImageGeneratorRunner.info(e.getReason().get());
+                return 0;
+            } else {
+                /* InterruptImageBuilding without explicit reason is exit code 3 */
+                return 3;
+            }
         } catch (FallbackFeature.FallbackImageRequest e) {
             reportUserException(e, parsedHostedOptions, NativeImageGeneratorRunner::warn);
             return 2;
@@ -476,6 +485,7 @@ public class NativeImageGeneratorRunner implements ImageBuildTask {
             ModuleSupport.exportAndOpenAllPackagesToUnnamed("jdk.internal.vm.ci", false);
             ModuleSupport.exportAndOpenAllPackagesToUnnamed("jdk.internal.vm.compiler", false);
             ModuleSupport.exportAndOpenAllPackagesToUnnamed("com.oracle.graal.graal_enterprise", true);
+            ModuleSupport.exportAndOpenPackageToUnnamed("java.base", "jdk.internal.loader", false);
             NativeImageGeneratorRunner.main(args);
         }
     }

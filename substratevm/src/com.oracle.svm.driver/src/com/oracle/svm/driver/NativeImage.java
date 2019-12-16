@@ -1235,7 +1235,7 @@ public class NativeImage {
             if (config.getBuildArgs().contains("--verbose")) {
                 e.printStackTrace();
             }
-            System.exit(1);
+            System.exit(e.exitCode);
         }
         System.exit(0);
     }
@@ -1260,9 +1260,10 @@ public class NativeImage {
                 build(FallbackBuildConfiguration.create(nativeImage), nativeImageProvider);
                 showWarning("Image '" + nativeImage.imageName +
                                 "' is a fallback image that requires a JDK for execution " +
-                                "(use --" + SubstrateOptions.OptionNameNoFallback + " to suppress fallback image generation).");
+                                "(use --" + SubstrateOptions.OptionNameNoFallback +
+                                " to suppress fallback image generation and to print more detailed information why a fallback image was necessary).");
             } else if (buildStatus != 0) {
-                throw showError("Image build request failed with exit status " + buildStatus);
+                throw showError("Image build request failed with exit status " + buildStatus, null, buildStatus);
             }
         }
     }
@@ -1474,12 +1475,20 @@ public class NativeImage {
 
     @SuppressWarnings("serial")
     public static final class NativeImageError extends Error {
+
+        final int exitCode;
+
         private NativeImageError(String message) {
-            super(message);
+            this(message, null);
         }
 
         private NativeImageError(String message, Throwable cause) {
+            this(message, cause, 1);
+        }
+
+        public NativeImageError(String message, Throwable cause, int exitCode) {
             super(message, cause);
+            this.exitCode = exitCode;
         }
     }
 
@@ -1489,6 +1498,10 @@ public class NativeImage {
 
     public static Error showError(String message, Throwable cause) {
         throw new NativeImageError(message, cause);
+    }
+
+    public static Error showError(String message, Throwable cause, int exitCode) {
+        throw new NativeImageError(message, cause, exitCode);
     }
 
     private static void show(Consumer<String> printFunc, String message) {
