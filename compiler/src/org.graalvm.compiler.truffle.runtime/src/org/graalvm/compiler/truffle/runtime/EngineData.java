@@ -53,8 +53,11 @@ import static org.graalvm.compiler.truffle.runtime.SharedTruffleRuntimeOptions.T
 import static org.graalvm.compiler.truffle.runtime.SharedTruffleRuntimeOptions.TruffleCompilationStatistics;
 import static org.graalvm.compiler.truffle.runtime.TruffleRuntimeOptions.getPolyglotOptionValue;
 
+import java.util.ArrayList;
 import java.util.function.Function;
+import java.util.function.Predicate;
 
+import com.oracle.truffle.api.nodes.RootNode;
 import org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.EngineModeEnum;
 import org.graalvm.options.OptionValues;
 
@@ -110,6 +113,7 @@ public final class EngineData {
     @CompilationFinal public int firstTierCallThreshold;
     @CompilationFinal public int firstTierCallAndLoopThreshold;
     @CompilationFinal public int lastTierCallThreshold;
+    @CompilationFinal public Predicate<RootNode> compilationPredicate;
 
     EngineData(OptionValues options) {
         // splitting options
@@ -150,6 +154,7 @@ public final class EngineData {
         this.lastTierCallThreshold = firstTierCallAndLoopThreshold;
         this.callTargetStatistics = TruffleRuntimeOptions.getValue(TruffleCompilationStatistics) ||
                         TruffleRuntimeOptions.getValue(TruffleCompilationStatisticDetails);
+        this.compilationPredicate = computeCompilationPredicate(compileOnly);
     }
 
     private int computeFirstTierCallThreshold(OptionValues options) {
@@ -172,6 +177,48 @@ public final class EngineData {
         } else {
             return getPolyglotOptionValue(options, CompilationThreshold);
         }
+    }
+
+    @SuppressFBWarnings(value = "", justification = "Cache that does not need to use equals to compare.")
+    private Predicate<RootNode> computeCompilationPredicate(String expression) {
+        if (expression == null) {
+            return rootNode -> true;
+        }
+
+        final ArrayList<String> includesList = new ArrayList<>();
+        final ArrayList<String> excludesList = new ArrayList<>();
+
+        final String[] items = expression.split(",");
+        for (String item : items) {
+            if (item.startsWith("~")) {
+                excludesList.add(item.substring(1));
+            } else {
+                includesList.add(item);
+            }
+        }
+
+        return rootNode -> {
+            final String name = rootNode.getName();
+            boolean included = includesList.isEmpty();
+            if (name != null) {
+                for (int i = 0; !included && i < includesList.size(); i++) {
+                    if (name.contains(includesList.get(i))) {
+                        included = true;
+                    }
+                }
+            }
+            if (!included) {
+                return false;
+            }
+            if (name != null) {
+                for (String exclude : excludesList) {
+                    if (name.contains(exclude)) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        };
     }
 
 }
