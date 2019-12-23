@@ -65,6 +65,7 @@ import com.oracle.svm.core.graal.GraalFeature;
 import com.oracle.svm.core.graal.code.SubstrateBackend;
 import com.oracle.svm.core.graal.code.SubstrateBackendFactory;
 import com.oracle.svm.core.graal.code.SubstrateLoweringProviderFactory;
+import com.oracle.svm.core.graal.code.SubstrateSuitesCreatorProvider;
 import com.oracle.svm.core.graal.meta.RuntimeConfiguration;
 import com.oracle.svm.core.graal.nodes.ExceptionStateNode;
 import com.oracle.svm.core.graal.nodes.ReadExceptionObjectNode;
@@ -72,6 +73,7 @@ import com.oracle.svm.core.graal.snippets.NodeLoweringProvider;
 import com.oracle.svm.core.nodes.CFunctionEpilogueNode;
 import com.oracle.svm.core.option.HostedOptionKey;
 import com.oracle.svm.core.snippets.SnippetRuntime;
+import com.oracle.svm.core.thread.VMThreads.StatusSupport;
 import com.oracle.svm.core.util.UserError;
 import com.oracle.svm.hosted.FeatureImpl;
 import com.oracle.svm.hosted.c.util.FileUtils;
@@ -157,6 +159,7 @@ public class LLVMFeature implements Feature, GraalFeature {
         });
 
         ImageSingletons.add(TargetGraphBuilderPlugins.class, new LLVMGraphBuilderPlugins());
+        ImageSingletons.add(SubstrateSuitesCreatorProvider.class, new SubstrateSuitesCreatorProvider());
     }
 
     @Override
@@ -202,7 +205,7 @@ public class LLVMFeature implements Feature, GraalFeature {
              * code. We therefore need the CFunctionEpilogueNode to restore the Java state before we
              * handle the exception.
              */
-            CFunctionEpilogueNode cFunctionEpilogueNode = new CFunctionEpilogueNode();
+            CFunctionEpilogueNode cFunctionEpilogueNode = new CFunctionEpilogueNode(StatusSupport.STATUS_IN_NATIVE);
             graph.add(cFunctionEpilogueNode);
             graph.addAfterFixed(readRegNode, cFunctionEpilogueNode);
             cFunctionEpilogueNode.lower(tool);
