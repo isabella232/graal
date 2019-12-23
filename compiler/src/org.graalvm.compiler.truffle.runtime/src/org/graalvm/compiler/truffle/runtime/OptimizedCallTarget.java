@@ -594,6 +594,8 @@ public abstract class OptimizedCallTarget implements CompilableTruffleAST, RootC
      */
     public abstract long getCodeAddress();
 
+    public abstract InstalledCode getInstalledCode();
+
     /**
      * Determines if this call target has valid machine code attached to it.
      */
