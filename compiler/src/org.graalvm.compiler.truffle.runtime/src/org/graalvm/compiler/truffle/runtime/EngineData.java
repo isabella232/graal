@@ -31,12 +31,15 @@ import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.Compi
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.CompilationThreshold;
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.CompileImmediately;
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.CompileOnly;
+import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.DisassembleOnly;
+import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.DisassemblyFormat;
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.FirstTierCompilationThreshold;
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.FirstTierMinInvokeThreshold;
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.MinInvokeThreshold;
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.Mode;
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.MultiTier;
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.PerformanceWarningsAreFatal;
+import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.PrintDisassembly;
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.ReturnTypeSpeculation;
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.Splitting;
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.SplittingAllowForcedSplits;
@@ -59,6 +62,7 @@ import java.util.function.Predicate;
 
 import com.oracle.truffle.api.nodes.RootNode;
 import org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.EngineModeEnum;
+import org.graalvm.compiler.truffle.options.DisassemblyFormatType;
 import org.graalvm.options.OptionValues;
 
 import com.oracle.truffle.api.CompilerDirectives.CompilationFinal;
@@ -103,6 +107,9 @@ public final class EngineData {
     @CompilationFinal public boolean argumentTypeSpeculation;
     @CompilationFinal public boolean traceCompilation;
     @CompilationFinal public boolean traceCompilationDetails;
+    @CompilationFinal public boolean printDisassembly;
+    @CompilationFinal public String disassembleOnly;
+    @CompilationFinal public DisassemblyFormatType disassemblyFormat;
     @CompilationFinal public boolean backgroundCompilation;
     @CompilationFinal public boolean compilationExceptionsAreThrown;
     @CompilationFinal public boolean performanceWarningsAreFatal;
@@ -114,6 +121,7 @@ public final class EngineData {
     @CompilationFinal public int firstTierCallAndLoopThreshold;
     @CompilationFinal public int lastTierCallThreshold;
     @CompilationFinal public Predicate<RootNode> compilationPredicate;
+    @CompilationFinal public Predicate<RootNode> disassemblePredicate;
 
     EngineData(OptionValues options) {
         // splitting options
@@ -149,12 +157,16 @@ public final class EngineData {
         this.backgroundCompilation = getPolyglotOptionValue(options, BackgroundCompilation);
         this.compilationExceptionsAreThrown = getPolyglotOptionValue(options, CompilationExceptionsAreThrown);
         this.performanceWarningsAreFatal = getPolyglotOptionValue(options, PerformanceWarningsAreFatal);
+        this.printDisassembly = getPolyglotOptionValue(options, PrintDisassembly);
+        this.disassembleOnly = getPolyglotOptionValue(options, DisassembleOnly);
+        this.disassemblyFormat = getPolyglotOptionValue(options, DisassemblyFormat);
         this.firstTierCallThreshold = computeFirstTierCallThreshold(options);
         this.firstTierCallAndLoopThreshold = computeFirstTierCallAndLoopThreshold(options);
         this.lastTierCallThreshold = firstTierCallAndLoopThreshold;
         this.callTargetStatistics = TruffleRuntimeOptions.getValue(TruffleCompilationStatistics) ||
                         TruffleRuntimeOptions.getValue(TruffleCompilationStatisticDetails);
         this.compilationPredicate = computeCompilationPredicate(compileOnly);
+        this.disassemblePredicate = computeCompilationPredicate(disassembleOnly);
     }
 
     private int computeFirstTierCallThreshold(OptionValues options) {
