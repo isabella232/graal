@@ -49,6 +49,7 @@ import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.Split
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.SplittingMaxNumberOfSplitNodes;
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.SplittingMaxPropagationDepth;
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.SplittingTraceEvents;
+import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.TraceCompilationCompact;
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.TraceCompilation;
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.TraceCompilationDetails;
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.TraceSplittingSummary;
@@ -105,6 +106,7 @@ public final class EngineData {
     @CompilationFinal public boolean multiTier;
     @CompilationFinal public boolean returnTypeSpeculation;
     @CompilationFinal public boolean argumentTypeSpeculation;
+    @CompilationFinal public boolean traceCompilationCompact;
     @CompilationFinal public boolean traceCompilation;
     @CompilationFinal public boolean traceCompilationDetails;
     @CompilationFinal public boolean printDisassembly;
@@ -152,6 +154,7 @@ public final class EngineData {
 
         this.returnTypeSpeculation = getPolyglotOptionValue(options, ReturnTypeSpeculation);
         this.argumentTypeSpeculation = getPolyglotOptionValue(options, ArgumentTypeSpeculation);
+        this.traceCompilationCompact = getPolyglotOptionValue(options, TraceCompilationCompact);
         this.traceCompilation = getPolyglotOptionValue(options, TraceCompilation);
         this.traceCompilationDetails = getPolyglotOptionValue(options, TraceCompilationDetails);
         this.backgroundCompilation = getPolyglotOptionValue(options, BackgroundCompilation);
