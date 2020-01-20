@@ -665,7 +665,7 @@ class BaseGraalVmLayoutDistribution(_with_metaclass(ABCMeta, mx.LayoutDistributi
                     "commit.committer-ts": _info['committer-ts'],
                 }
         _metadata_dict = OrderedDict()
-        if parent_release_file is not None:
+        if parent_release_file is not None and exists(parent_release_file):
             with open(parent_release_file, 'r') as f:
                 for line in f:
                     assert line.count('=') > 0, "The release file of the base JDK ('{}') contains a line without the '=' sign: '{}'".format(parent_release_file, line)
@@ -1848,8 +1848,9 @@ x-GraalVM-Polyglot-Part: {polyglot}
         if dependencies:
             _manifest_str += "Require-Bundle: {}\n".format(','.join(("org.graalvm." + d for d in dependencies)))
         if isinstance(main_component, mx_sdk.GraalVmLanguage):
+            _wd_base = join('jre', 'languages') if _src_jdk_version < 9 else 'languages'
             _manifest_str += """x-GraalVM-Working-Directories: {workdir}
-""".format(workdir=join('jre', 'languages', main_component.dir_name))
+""".format(workdir=join(_wd_base, main_component.dir_name))
 
         post_install_msg = None
         for component in self.components:

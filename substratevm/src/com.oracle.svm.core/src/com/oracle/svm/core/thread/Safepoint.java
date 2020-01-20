@@ -45,6 +45,7 @@ import org.graalvm.word.WordFactory;
 
 import com.oracle.svm.core.SubstrateOptions;
 import com.oracle.svm.core.annotate.AutomaticFeature;
+import com.oracle.svm.core.annotate.DuplicatedInNativeCode;
 import com.oracle.svm.core.annotate.NeverInline;
 import com.oracle.svm.core.annotate.RestrictHeapAccess;
 import com.oracle.svm.core.annotate.Uninterruptible;
@@ -53,6 +54,7 @@ import com.oracle.svm.core.jdk.UninterruptibleUtils;
 import com.oracle.svm.core.log.Log;
 import com.oracle.svm.core.nodes.CFunctionEpilogueNode;
 import com.oracle.svm.core.nodes.CFunctionPrologueNode;
+import com.oracle.svm.core.nodes.CodeSynchronizationNode;
 import com.oracle.svm.core.nodes.SafepointCheckNode;
 import com.oracle.svm.core.option.HostedOptionKey;
 import com.oracle.svm.core.option.RuntimeOptionKey;
@@ -60,6 +62,7 @@ import com.oracle.svm.core.snippets.SnippetRuntime;
 import com.oracle.svm.core.snippets.SnippetRuntime.SubstrateForeignCallDescriptor;
 import com.oracle.svm.core.snippets.SubstrateForeignCallTarget;
 import com.oracle.svm.core.thread.VMThreads.StatusSupport;
+import com.oracle.svm.core.thread.VMThreads.ActionOnTransitionToJavaSupport;
 import com.oracle.svm.core.threadlocal.FastThreadLocalFactory;
 import com.oracle.svm.core.threadlocal.FastThreadLocalInt;
 import com.oracle.svm.core.threadlocal.VMThreadLocalInfos;
@@ -201,6 +204,11 @@ public final class Safepoint {
             // Resetting the safepoint counter or executing the recurring callback must only be done
             // if the thread is in Java state.
             ThreadingSupportImpl.onSafepointCheckSlowpath();
+            if (ActionOnTransitionToJavaSupport.isActionPending()) {
+                assert ActionOnTransitionToJavaSupport.isSynchronizeCode() : "Unexpected action pending.";
+                CodeSynchronizationNode.synchronizeCode();
+                ActionOnTransitionToJavaSupport.clearActions();
+            }
         }
     }
 
@@ -413,6 +421,7 @@ public final class Safepoint {
         StatusSupport.setStatusVM();
     }
 
+    @Uninterruptible(reason = "Called from uninterruptible code.", mayBeInlined = true)
     public static void transitionVMToNative() {
         // We can directly change the thread state without a safepoint check as the safepoint
         // mechanism does not touch the thread if the status is VM.
@@ -426,9 +435,9 @@ public final class Safepoint {
     private static native void callSlowPathNativeToNewStatus(@ConstantNodeParameter ForeignCallDescriptor descriptor, int newThreadStatus);
 
     /**
-     * Block until I can transition from native to Java. This is not inlined and need not be fast.
-     * In fact, it often blocks. But it can not do much except block, since it starts out running
-     * with "native" thread status.
+     * Block until I can transition from native to a new thread status. This is not inlined and need
+     * not be fast. In fact, it often blocks. But it can not do much except block, since it starts
+     * out running with "native" thread status.
      *
      * Foreign call: {@link #ENTER_SLOW_PATH_TRANSITION_FROM_NATIVE_TO_NEW_STATUS}.
      */
@@ -449,9 +458,9 @@ public final class Safepoint {
 
     /** Methods for the thread that brings the system to a safepoint. */
     public static final class Master {
-        private static final int NOT_AT_SAFEPOINT = 0;
-        private static final int SYNCHRONIZING = 1;
-        private static final int AT_SAFEPOINT = 2;
+        @DuplicatedInNativeCode private static final int NOT_AT_SAFEPOINT = 0;
+        @DuplicatedInNativeCode private static final int SYNCHRONIZING = 1;
+        @DuplicatedInNativeCode private static final int AT_SAFEPOINT = 2;
 
         static void initialize() {
             ImageSingletons.add(Master.class, new Master());

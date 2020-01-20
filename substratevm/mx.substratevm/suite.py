@@ -131,6 +131,7 @@ suite = {
                     "jdk.internal.misc",
                     "jdk.internal.logger",
                     "sun.util.resources",
+                    "sun.text.spi",
                     "jdk.internal.perf",
                     "sun.util.locale.provider"
                 ],
@@ -138,6 +139,22 @@ suite = {
             "javaCompliance": "11+",
             "overlayTarget" : "com.oracle.svm.core",
             "multiReleaseJarVersion": "11",
+            "checkstyle": "com.oracle.svm.core",
+            "workingSets": "SVM",
+        },
+
+        "com.oracle.svm.core.jdk14": {
+            "subDir": "src",
+            "sourceDirs": ["src"],
+            "dependencies": ["com.oracle.svm.core"],
+            "requiresConcealed" : {
+                "java.base" : [
+                    "jdk.internal.access.foreign",
+                ],
+            },
+            "javaCompliance": "14+",
+            "overlayTarget" : "com.oracle.svm.core",
+            "multiReleaseJarVersion": "14",
             "checkstyle": "com.oracle.svm.core",
             "workingSets": "SVM",
         },
@@ -1118,8 +1135,12 @@ suite = {
             "dependencies" : ["com.oracle.svm.core.graal.llvm"],
             "distDependencies" : [
                 "SVM",
-                "compiler:GRAAL_LLVM"
+                "compiler:GRAAL_LLVM",
+                "sdk:LLVM_TOOLCHAIN"
             ],
+            "javaProperties": {
+                "llvm.bin.dir": "<path:LLVM_TOOLCHAIN>/bin/",
+            },
             "maven" : False,
         },
 

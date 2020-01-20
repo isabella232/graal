@@ -675,6 +675,23 @@ suite = {
       "workingSets" : "Graal,HotSpot",
     },
 
+    "org.graalvm.compiler.hotspot.jdk15" : {
+      "subDir" : "src",
+      "sourceDirs" : ["src"],
+      "dependencies": ["org.graalvm.compiler.hotspot"],
+      "requiresConcealed" : {
+        "jdk.internal.vm.ci" : [
+          "jdk.vm.ci.hotspot",
+          "jdk.vm.ci.meta"
+        ],
+      },
+      "overlayTarget" : "org.graalvm.compiler.hotspot",
+      "multiReleaseJarVersion" : "15",
+      "checkstyle" : "org.graalvm.compiler.graph",
+      "javaCompliance" : "15+",
+      "workingSets" : "Graal,HotSpot",
+    },
+
     "org.graalvm.compiler.hotspot.management" : {
       "subDir" : "src",
       "sourceDirs" : ["src"],
@@ -927,7 +944,7 @@ suite = {
       "subDir" : "src",
       "sourceDirs" : ["src"],
       "dependencies" : [
-        "org.graalvm.compiler.asm",
+        "org.graalvm.compiler.lir",
       ],
       "checkstyle" : "org.graalvm.compiler.graph",
       "javaCompliance" : "8+",
@@ -1081,7 +1098,6 @@ suite = {
       "subDir" : "src",
       "sourceDirs" : ["src"],
       "dependencies" : [
-        "org.graalvm.compiler.lir",
         "org.graalvm.compiler.asm.amd64",
       ],
       "annotationProcessors" : ["GRAAL_OPTIONS_PROCESSOR"],

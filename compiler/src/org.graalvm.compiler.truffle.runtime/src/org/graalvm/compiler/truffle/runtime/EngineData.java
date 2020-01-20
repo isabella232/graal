@@ -28,6 +28,8 @@ import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.Argum
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.BackgroundCompilation;
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.Compilation;
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.CompilationExceptionsAreThrown;
+import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.CompilationStatistics;
+import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.CompilationStatisticDetails;
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.CompilationThreshold;
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.CompileImmediately;
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.CompileOnly;
@@ -40,6 +42,7 @@ import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.Mode;
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.MultiTier;
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.PerformanceWarningsAreFatal;
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.PrintDisassembly;
+import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.Profiling;
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.ReturnTypeSpeculation;
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.Splitting;
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.SplittingAllowForcedSplits;
@@ -53,11 +56,11 @@ import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.Trace
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.TraceCompilation;
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.TraceCompilationDetails;
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.TraceSplittingSummary;
-import static org.graalvm.compiler.truffle.runtime.SharedTruffleRuntimeOptions.TruffleCompilationStatisticDetails;
-import static org.graalvm.compiler.truffle.runtime.SharedTruffleRuntimeOptions.TruffleCompilationStatistics;
+import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.TraceTransferToInterpreter;
 import static org.graalvm.compiler.truffle.runtime.TruffleRuntimeOptions.getPolyglotOptionValue;
 
 import java.util.ArrayList;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
@@ -67,6 +70,7 @@ import org.graalvm.compiler.truffle.options.DisassemblyFormatType;
 import org.graalvm.options.OptionValues;
 
 import com.oracle.truffle.api.CompilerDirectives.CompilationFinal;
+import org.graalvm.compiler.truffle.runtime.debug.StatisticsListener;
 
 /**
  * Class used to store data used by the compiler in the Engine. Enables "global" compiler state per
@@ -81,10 +85,14 @@ public final class EngineData {
         }
     };
 
+    private static final AtomicLong engineCounter = new AtomicLong();
+
     int splitLimit;
     int splitCount;
+    public final long id;
     @CompilationFinal OptionValues engineOptions;
     final TruffleSplittingStrategy.SplitStatisticsReporter reporter;
+    @CompilationFinal public StatisticsListener statisticsListener;
 
     /*
      * Important while visible, options must not be modified except in loadOptions.
@@ -117,6 +125,9 @@ public final class EngineData {
     @CompilationFinal public boolean performanceWarningsAreFatal;
     @CompilationFinal public String compileOnly;
     @CompilationFinal public boolean callTargetStatistics;
+    @CompilationFinal public boolean callTargetStatisticDetails;
+    @CompilationFinal public boolean profilingEnabled;
+    @CompilationFinal public boolean traceTransferToInterpreter;
 
     // computed fields.
     @CompilationFinal public int firstTierCallThreshold;
@@ -126,6 +137,7 @@ public final class EngineData {
     @CompilationFinal public Predicate<RootNode> disassemblePredicate;
 
     EngineData(OptionValues options) {
+        this.id = engineCounter.incrementAndGet();
         // splitting options
         loadOptions(options);
 
@@ -166,8 +178,11 @@ public final class EngineData {
         this.firstTierCallThreshold = computeFirstTierCallThreshold(options);
         this.firstTierCallAndLoopThreshold = computeFirstTierCallAndLoopThreshold(options);
         this.lastTierCallThreshold = firstTierCallAndLoopThreshold;
-        this.callTargetStatistics = TruffleRuntimeOptions.getValue(TruffleCompilationStatistics) ||
-                        TruffleRuntimeOptions.getValue(TruffleCompilationStatisticDetails);
+        this.callTargetStatisticDetails = getPolyglotOptionValue(options, CompilationStatisticDetails);
+        this.callTargetStatistics = getPolyglotOptionValue(options, CompilationStatistics) || this.callTargetStatisticDetails;
+        this.statisticsListener = this.callTargetStatistics ? StatisticsListener.createEngineListener(GraalTruffleRuntime.getRuntime()) : null;
+        this.profilingEnabled = getPolyglotOptionValue(options, Profiling);
+        this.traceTransferToInterpreter = getPolyglotOptionValue(options, TraceTransferToInterpreter);
         this.compilationPredicate = computeCompilationPredicate(compileOnly);
         this.disassemblePredicate = computeCompilationPredicate(disassembleOnly);
     }
