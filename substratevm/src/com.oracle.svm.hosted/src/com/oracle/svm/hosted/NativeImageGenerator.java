@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012, 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012, 2020, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -54,6 +54,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
+import com.oracle.svm.core.c.libc.LibCBase;
 import org.graalvm.collections.EconomicSet;
 import org.graalvm.collections.Pair;
 import org.graalvm.compiler.api.replacements.Fold;
@@ -153,6 +154,9 @@ import com.oracle.svm.core.SubstrateOptions;
 import com.oracle.svm.core.SubstrateTargetDescription;
 import com.oracle.svm.core.SubstrateUtil;
 import com.oracle.svm.core.c.function.CEntryPointOptions;
+import com.oracle.svm.core.c.libc.GLibc;
+import com.oracle.svm.core.c.libc.MuslLibc;
+import com.oracle.svm.core.c.libc.Libc;
 import com.oracle.svm.core.code.RuntimeCodeCache;
 import com.oracle.svm.core.config.ConfigurationValues;
 import com.oracle.svm.core.graal.GraalConfiguration;
@@ -394,9 +398,6 @@ public class NativeImageGenerator {
                 architecture = new AMD64(features, SubstrateTargetDescription.allAMD64Flags());
             }
             assert architecture instanceof AMD64 : "using AMD64 platform with a different architecture";
-            if (RuntimeCodeCache.Options.WriteableCodeCache.getValue() == null) {
-                RuntimeOptionValues.singleton().update(RuntimeCodeCache.Options.WriteableCodeCache, false);
-            }
             boolean inlineObjects = SubstrateOptions.SpawnIsolates.getValue() && RuntimeCodeCache.Options.WriteableCodeCache.getValue();
             int deoptScratchSpace = 2 * 8; // Space for two 64-bit registers: rax and xmm0
             return new SubstrateTargetDescription(architecture, true, 16, 0, inlineObjects, deoptScratchSpace);
@@ -410,12 +411,6 @@ public class NativeImageGenerator {
                 architecture = new AArch64(features, EnumSet.noneOf(AArch64.Flag.class));
             }
             assert architecture instanceof AArch64 : "using AArch64 platform with a different architecture";
-            if (RuntimeCodeCache.Options.WriteableCodeCache.getValue() == null) {
-                RuntimeOptionValues.singleton().update(RuntimeCodeCache.Options.WriteableCodeCache, true);
-            }
-            if (RuntimeCodeCache.Options.WriteableCodeCache.getValue() == false) {
-                throw UserError.abort("Code cache has to be writeable on AARCH64");
-            }
             boolean inlineObjects = SubstrateOptions.SpawnIsolates.getValue() && RuntimeCodeCache.Options.WriteableCodeCache.getValue();
             int deoptScratchSpace = 2 * 8; // Space for two 64-bit registers.
             return new SubstrateTargetDescription(architecture, true, 16, 0, inlineObjects, deoptScratchSpace);
@@ -842,6 +837,7 @@ public class NativeImageGenerator {
                 WordTypes aWordTypes = new SubstrateWordTypes(aMetaAccess, FrameAccess.getWordKind());
                 HostedSnippetReflectionProvider aSnippetReflection = new HostedSnippetReflectionProvider((SVMHost) aUniverse.hostVM(), aWordTypes);
 
+                prepareLibC();
                 nativeLibraries = setupNativeLibraries(imageName, aConstantReflection, aMetaAccess, aSnippetReflection, cEnumProcessor, classInitializationSupport);
 
                 ForeignCallsProvider aForeignCalls = new SubstrateForeignCallsProvider();
@@ -858,6 +854,17 @@ public class NativeImageGenerator {
                 entryPoints.forEach((method, entryPointData) -> CEntryPointCallStubSupport.singleton().registerStubForMethod(method, () -> entryPointData));
             }
         }
+    }
+
+    private void prepareLibC() {
+        LibCBase libc;
+        if (SubstrateOptions.UseMuslC.hasBeenSet()) {
+            libc = new MuslLibc();
+        } else {
+            libc = new GLibc();
+        }
+        libc.prepare(tempDirectory());
+        ImageSingletons.add(LibCBase.class, libc);
     }
 
     private void setAndVerifyMainEntryPoint(AfterRegistrationAccessImpl access, Map<Method, CEntryPointData> entryPoints) {
@@ -1462,11 +1469,20 @@ public class NativeImageGenerator {
         }
     }
 
+    private static boolean isProvidedInCurrentLibc(Method method) {
+        LibCBase currentLibC = ImageSingletons.lookup(LibCBase.class);
+        Libc targetLibC = method.getAnnotation(Libc.class);
+        return targetLibC == null || Arrays.asList(targetLibC.value()).contains(currentLibC.getClass());
+    }
+
     @SuppressWarnings("try")
     private void processNativeLibraryImports(NativeLibraries nativeLibs, MetaAccessProvider metaAccess, ClassInitializationSupport classInitializationSupport) {
+
         for (Method method : loader.findAnnotatedMethods(CConstant.class)) {
-            classInitializationSupport.initializeAtBuildTime(method.getDeclaringClass(), "classes with " + CConstant.class.getSimpleName() + " annotations are always initialized");
-            nativeLibs.loadJavaMethod(metaAccess.lookupJavaMethod(method));
+            if (isProvidedInCurrentLibc(method)) {
+                classInitializationSupport.initializeAtBuildTime(method.getDeclaringClass(), "classes with " + CConstant.class.getSimpleName() + " annotations are always initialized");
+                nativeLibs.loadJavaMethod(metaAccess.lookupJavaMethod(method));
+            }
         }
         for (Method method : loader.findAnnotatedMethods(CFunction.class)) {
             nativeLibs.loadJavaMethod(metaAccess.lookupJavaMethod(method));

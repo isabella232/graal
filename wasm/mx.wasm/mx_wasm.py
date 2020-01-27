@@ -39,6 +39,7 @@
 # SOFTWARE.
 #
 import mx
+import mx_benchmark
 import mx_sdk_vm
 import mx_truffle
 import mx_wasm_benchmark  # pylint: disable=unused-import
@@ -61,16 +62,28 @@ wabt_dir = mx.get_env("WABT_DIR", None)
 NODE_BENCH_DIR = "node"
 NATIVE_BENCH_DIR = "native"
 
+microbenchmarks = [
+    "cdf",
+    "digitron",
+    "event-sim",
+    "fft",
+    "hash-join",
+    "merge-join",
+    "phong",
+    "qsort",
+    "strings",
+]
+
 
 #
 # Gate runners.
 #
 
-
 class GraalWasmDefaultTags:
     buildall = "buildall"
     wasmtest = "wasmtest"
     wasmextratest = "wasmextratest"
+    wasmbenchtest = "wasmbenchtest"
 
 
 def graal_wasm_gate_runner(args, tasks):
@@ -84,6 +97,16 @@ def graal_wasm_gate_runner(args, tasks):
         if t:
             unittest(["CSuite"])
             unittest(["WatSuite"])
+    with Task("BenchTest", tasks, tags=[GraalWasmDefaultTags.wasmbenchtest]) as t:
+        if t:
+            for b in microbenchmarks:
+                exitcode = mx_benchmark.benchmark([
+                        "wasm:WASM_BENCHMARKCASES", "--",
+                        "--jvm", "server", "--jvm-config", "graal-core",
+                        "-Dwasmbench.benchmarkName=" + b, "-Dwasmtest.keepTempFiles=true", "--",
+                        "CMicroBenchmarkSuite", "-wi", "1", "-i", "1"])
+                if exitcode != 0:
+                    mx.abort("Errors during benchmark tests, aborting.")
 
 
 add_gate_runner(_suite, graal_wasm_gate_runner)
@@ -93,10 +116,11 @@ add_gate_runner(_suite, graal_wasm_gate_runner)
 # Project types.
 #
 
-
 benchmark_methods = [
     "_benchmarkWarmupCount",
     "_benchmarkSetupOnce",
+    "_benchmarkSetupEach",
+    "_benchmarkTeardownEach",
     "_benchmarkRun",
     "_main",
 ]
@@ -218,6 +242,7 @@ class GraalWasmSourceFileTask(mx.ProjectBuildTask):
         mx.log("Building files from the source dir: " + source_dir)
         cc_flags = ["-O3", "-g2"]
         include_flags = []
+        disable_test_api_flags = ["-DDISABLE_TEST_API"]
         if hasattr(self.project, "includeset"):
             include_flags = ["-I", os.path.join(_suite.dir, "includes", self.project.includeset)]
         emcc_flags = cc_flags
@@ -240,7 +265,7 @@ class GraalWasmSourceFileTask(mx.ProjectBuildTask):
                 if filename.endswith(".c"):
                     # Step 1a: compile with the JS file, and store as files for running Node, if necessary.
                     output_js_path = os.path.join(output_dir, subdir, basename + ".js")
-                    build_cmd_line = [emcc_cmd] + emcc_flags + [source_path, "-o", output_js_path] + include_flags
+                    build_cmd_line = [emcc_cmd] + emcc_flags + disable_test_api_flags + [source_path, "-o", output_js_path] + include_flags
                     if mx.run(build_cmd_line, nonZeroIsFatal=False) != 0:
                         mx.abort("Could not build the JS output of " + filename + " with emcc.")
                     if self.subject.isBenchmarkProject():
@@ -255,7 +280,7 @@ class GraalWasmSourceFileTask(mx.ProjectBuildTask):
                         f.write(init_info)
 
                     # Step 1c: compile to just a .wasm file, to avoid name mangling.
-                    build_cmd_line = [emcc_cmd] + emcc_flags + [source_path, "-o", output_wasm_path] + include_flags
+                    build_cmd_line = [emcc_cmd] + emcc_flags + ["-s", "ERROR_ON_UNDEFINED_SYMBOLS=0"] + [source_path, "-o", output_wasm_path] + include_flags
                     if mx.run(build_cmd_line, nonZeroIsFatal=False) != 0:
                         mx.abort("Could not build the wasm-only output of " + filename + " with emcc.")
                 elif filename.endswith(".wat"):
@@ -297,7 +322,7 @@ class GraalWasmSourceFileTask(mx.ProjectBuildTask):
                 if filename.endswith(".c"):
                     output_path = os.path.join(output_dir, subdir, NATIVE_BENCH_DIR, mx.exe_suffix(basename))
                     link_flags = ["-lm"]
-                    gcc_cmd_line = [gcc_cmd] + cc_flags + [source_path, "-o", output_path] + include_flags + link_flags
+                    gcc_cmd_line = [gcc_cmd] + cc_flags + disable_test_api_flags + [source_path, "-o", output_path] + include_flags + link_flags
                     if mx.run(gcc_cmd_line, nonZeroIsFatal=False) != 0:
                         mx.abort("Could not build the native binary of " + filename + ".")
                     os.chmod(output_path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
@@ -312,6 +337,13 @@ class GraalWasmSourceFileTask(mx.ProjectBuildTask):
                     f.write(name)
                     f.write("\n")
 
+    def to_int(self, string):
+        fv = float(string)
+        iv = int(fv)
+        if float(iv) != fv:
+            mx.abort("Cannot parse initialization directive: " + string)
+        return iv
+
     def extractInitialization(self, output_js_path):
         global_vars = {}
         stores = []
@@ -321,8 +353,8 @@ class GraalWasmSourceFileTask(mx.ProjectBuildTask):
                 line = f.readline()
                 match = re.match(r"var DYNAMIC_BASE = (.*), DYNAMICTOP_PTR = (.*).*;\n", line)
                 if match:
-                    global_vars["DYNAMIC_BASE"] = int(match.group(1))
-                    global_vars["DYNAMICTOP_PTR"] = int(match.group(2))
+                    global_vars["DYNAMIC_BASE"] = self.to_int(match.group(1))
+                    global_vars["DYNAMICTOP_PTR"] = self.to_int(match.group(2))
                     break
                 if not line:
                     break

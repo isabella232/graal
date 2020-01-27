@@ -204,6 +204,9 @@ def _get_component_type_base(c, apply_substitutions=False):
     elif isinstance(c, mx_sdk.GraalVMSvmMacro):
         svm_component = get_component('svm', stage1=True)
         result = _get_component_type_base(svm_component, apply_substitutions=apply_substitutions) + '/' + svm_component.dir_name + '/macros/'
+    elif isinstance(c, mx_sdk.GraalVMSvmStaticLib):
+        svm_component = get_component('svm')
+        result = _get_component_type_base(svm_component, apply_substitutions=apply_substitutions) + '/' + svm_component.dir_name + '/static-libs/'
     elif isinstance(c, mx_sdk.GraalVmComponent):
         result = '<jdk_base>/'
     else:
@@ -498,6 +501,7 @@ class BaseGraalVmLayoutDistribution(_with_metaclass(ABCMeta, mx.LayoutDistributi
         # Add the rest of the GraalVM
 
         component_suites = {}
+        installables = {}
         has_graal_compiler = False
         for _component in self.components:
             mx.logv('Adding {} ({}) to the {} {}'.format(_component.name, _component.__class__.__name__, name, self.__class__.__name__))
@@ -627,6 +631,28 @@ class BaseGraalVmLayoutDistribution(_with_metaclass(ABCMeta, mx.LayoutDistributi
             if isinstance(_component, mx_sdk.GraalVmLanguage) and not is_graalvm:
                 # add language-specific release file
                 component_suites.setdefault(_component_base, []).append(_component.suite)
+
+            if _component.installable and not _disable_installable(_component):
+                installables.setdefault(_component.installable_id, []).append(_component)
+
+        installer = get_component('gu', stage1=stage1)
+        if installer:
+            # Register pre-installed components
+            components_dir = _get_component_type_base(installer) + installer.dir_name + '/components/'
+            for components in installables.values():
+                main_component = min(components, key=lambda c: c.priority)
+                _add(layout, components_dir + main_component.installable_id + '.component', """string:Bundle-Name={name}
+Bundle-Symbolic-Name={id}
+Bundle-Version={version}
+
+x-GraalVM-Polyglot-Part={polyglot}
+x-GraalVM-Component-Distribution=bundled
+""".format(
+                    name=main_component.name,
+                    id=main_component.installable_id,
+                    version=_suite.release_version(),
+                    polyglot=isinstance(main_component, mx_sdk.GraalVmTruffleComponent) and main_component.include_in_polyglot
+                             and (not isinstance(main_component, mx_sdk.GraalVmTool) or main_component.include_by_default)))
 
         for _base, _suites in component_suites.items():
             _metadata = self._get_metadata(_suites)
@@ -1171,7 +1197,7 @@ class NativePropertiesBuildTask(mx.ProjectBuildTask):
                 if image_config.is_sdk_launcher:
                     build_args += [
                         '-H:-ParseRuntimeOptions',
-                        '-Dorg.graalvm.launcher.classpath=' + ':'.join(graalvm_home_relative_classpath(image_config.jar_distributions, graalvm_home).split(os.pathsep)),
+                        '-Dorg.graalvm.launcher.classpath=' + graalvm_home_relative_classpath(image_config.jar_distributions, graalvm_home),
                     ]
 
                 build_args += [
@@ -1980,6 +2006,10 @@ class GraalVmStandaloneComponent(mx.LayoutTARDistribution):  # pylint: disable=t
                     launcher_config.add_relative_home_path(language, relative_path_from_launcher_dir)
 
         add_files_from_component(component, base_dir, [])
+
+        sorted_suites = sorted(mx.suites(), key=lambda s: s.name)
+        metadata = BaseGraalVmLayoutDistribution._get_metadata(sorted_suites)
+        layout.setdefault(base_dir + '/release', []).append('string:' + metadata)
 
         for dependency_name, details in component.standalone_dependencies.items():
             dependency_path = details[0]

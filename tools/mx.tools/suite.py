@@ -4,7 +4,7 @@ suite = {
     "defaultLicense" : "GPLv2-CPE",
 
     "groupId" : "org.graalvm.tools",
-    "version" : "20.0.0",
+    "version" : "20.1.0",
     "release" : False,
     "url" : "http://openjdk.java.net/projects/graal",
     "developer" : {
@@ -167,6 +167,42 @@ suite = {
             "checkstyle" : "com.oracle.truffle.tools.chromeinspector",
             "javaCompliance" : "8+",
             "workingSets" : "Tools",
+        },
+        "org.graalvm.tools.api.lsp": {
+            "subDir": "src",
+            "sourceDirs": ["src"],
+            "dependencies": [
+                "truffle:TRUFFLE_API",
+            ],
+            "checkstyle": "com.oracle.truffle.tools.chromeinspector",
+            "javaCompliance": "8+",
+            "annotationProcessors": ["truffle:TRUFFLE_DSL_PROCESSOR"],
+            "workingSets": "Tools",
+        },
+        "org.graalvm.tools.lsp": {
+            "subDir": "src",
+            "sourceDirs": ["src"],
+            "dependencies": [
+                "org.graalvm.tools.api.lsp",
+                "TruffleJSON"
+            ],
+            "checkstyle": "com.oracle.truffle.tools.chromeinspector",
+            "javaCompliance": "8+",
+            "annotationProcessors": ["truffle:TRUFFLE_DSL_PROCESSOR"],
+            "workingSets": "Tools",
+        },
+        "org.graalvm.tools.lsp.test": {
+            "subDir": "src",
+            "sourceDirs": ["src"],
+            "dependencies": [
+                "org.graalvm.tools.lsp",
+                "truffle:TRUFFLE_SL",
+                "mx:JUNIT"
+            ],
+            "checkstyle": "com.oracle.truffle.tools.chromeinspector",
+            "javaCompliance": "8+",
+            "annotationProcessors": ["truffle:TRUFFLE_DSL_PROCESSOR"],
+            "workingSets": "Tools",
         },
     },
 
@@ -401,6 +437,51 @@ suite = {
                     "extracted-dependency:VISUALVM_COMMON/lib/visualvm/*",
                     "extracted-dependency:VISUALVM_PLATFORM_SPECIFIC/./lib/visualvm/*",
                 ],
+            },
+        },
+        "LSP_API": {
+            "subDir": "src",
+            # This distribution defines a module.
+            "moduleName" : "org.graalvm.tools.api.lsp",
+            "dependencies": ["org.graalvm.tools.api.lsp"],
+            "distDependencies" : [
+                "truffle:TRUFFLE_API",
+            ],
+            "maven" : {
+              "artifactId" : "lsp_api",
+            },
+            "description" : "Truffle Language Server backend API.",
+            "javadocType" : "api",
+        },
+        "LSP": {
+            "subDir": "src",
+            # This distribution defines a module.
+            "moduleName" : "org.graalvm.tools.lsp",
+            "dependencies": [
+                "org.graalvm.tools.api.lsp",
+                "org.graalvm.tools.lsp"
+            ],
+            "distDependencies" : [
+                "LSP_API",
+            ],
+            "maven" : {
+              "artifactId" : "lsp",
+            },
+            "description" : "Truffle Language Server backend implementation.",
+        },
+        "LSP_TEST": {
+            "dependencies": ["org.graalvm.tools.lsp.test"],
+            "distDependencies" : [
+                "LSP",
+                "truffle:TRUFFLE_SL",
+            ],
+            "description" : "Tests for the Truffle Language Server backend.",
+        },
+        "LSP_GRAALVM_SUPPORT" : {
+            "native" : True,
+            "description" : "Truffle Language Server backend for the GraalVM",
+            "layout" : {
+                "native-image.properties" : "file:mx.tools/tools-lsp.properties",
             },
         },
     },

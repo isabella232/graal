@@ -339,6 +339,9 @@ public class SubstrateOptions {
     @Option(help = "Saves stack base pointer on the stack on method entry.")//
     public static final HostedOptionKey<Boolean> PreserveFramePointer = new HostedOptionKey<>(false);
 
+    @Option(help = "Use callee saved registers to reduce spilling for low-frequency calls to stubs (if callee saved registers are supported by the architecture)")//
+    public static final HostedOptionKey<Boolean> UseCalleeSavedRegisters = new HostedOptionKey<>(true);
+
     @Option(help = "Report error if <typename>[:<UsageKind>{,<UsageKind>}] is discovered during analysis (valid values for UsageKind: InHeap, Allocated, InTypeCheck).", type = OptionType.Debug)//
     public static final HostedOptionKey<String[]> ReportAnalysisForbiddenType = new HostedOptionKey<>(new String[0]);
 
@@ -393,6 +396,9 @@ public class SubstrateOptions {
     public static final HostedOptionKey<String> CCompilerPath = new HostedOptionKey<>(null);
     @Option(help = "Provide custom C compiler option used for query code compilation.", type = OptionType.User)//
     public static final HostedOptionKey<String[]> CCompilerOption = new HostedOptionKey<>(new String[0]);
+
+    @Option(help = "Provide a path for the libmusl bundle so the resulting object file is linked against it.", type = OptionType.Expert)//
+    public static final HostedOptionKey<String> UseMuslC = new HostedOptionKey<>(null);
 
     /**
      * The alignment for AOT and JIT compiled methods. The value is constant folded during image

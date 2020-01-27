@@ -1428,6 +1428,34 @@ public class AArch64MacroAssembler extends AArch64Assembler {
     }
 
     /**
+     * Rotate right (register). dst = rotateRight(src1, (src2 & (size - 1))).
+     *
+     * @param size register size. Has to be 32 or 64.
+     * @param dst general purpose register. May not be null or stackpointer.
+     * @param src1 general purpose register. May not be null or stackpointer.
+     * @param src2 general purpose register. It holds a shift amount from 0 to (size - 1) in its
+     *            bottom 5 bits. May not be null or stackpointer.
+     */
+    @Override
+    public void rorv(int size, Register dst, Register src1, Register src2) {
+        super.rorv(size, dst, src1, src2);
+    }
+
+    /**
+     * Rotate right (immediate). dst = rotateRight(src1, shift).
+     *
+     * @param size register size. Has to be 32 or 64.
+     * @param dst general purpose register. May not be null or stackpointer.
+     * @param src general purpose register. May not be null or stackpointer.
+     * @param shift amount by which src is rotated. The value depends on the instruction variant, it
+     *            can be 0 to (size - 1).
+     */
+    public void ror(int size, Register dst, Register src, int shift) {
+        assert (0 <= shift && shift <= (size - 1));
+        super.extr(size, dst, src, src, shift);
+    }
+
+    /**
      * Clamps shiftAmt into range 0 <= shiftamt < size according to JLS.
      *
      * @param size size of operation.
@@ -1486,6 +1514,42 @@ public class AArch64MacroAssembler extends AArch64Assembler {
      */
     public void or(int size, Register dst, Register src, long bimm) {
         super.orr(size, dst, src, bimm);
+    }
+
+    /**
+     * dst = src1 & (~src2).
+     *
+     * @param size register size. Has to be 32 or 64.
+     * @param dst general purpose register. May not be null or stackpointer.
+     * @param src1 general purpose register. May not be null or stackpointer.
+     * @param src2 general purpose register. May not be null or stackpointer.
+     */
+    public void bic(int size, Register dst, Register src1, Register src2) {
+        super.bic(size, dst, src1, src2, ShiftType.LSL, 0);
+    }
+
+    /**
+     * dst = src1 ^ (~src2).
+     *
+     * @param size register size. Has to be 32 or 64.
+     * @param dst general purpose register. May not be null or stackpointer.
+     * @param src1 general purpose register. May not be null or stackpointer.
+     * @param src2 general purpose register. May not be null or stackpointer.
+     */
+    public void eon(int size, Register dst, Register src1, Register src2) {
+        super.eon(size, dst, src1, src2, ShiftType.LSL, 0);
+    }
+
+    /**
+     * dst = src1 | (~src2).
+     *
+     * @param size register size. Has to be 32 or 64.
+     * @param dst general purpose register. May not be null or stackpointer.
+     * @param src1 general purpose register. May not be null or stackpointer.
+     * @param src2 general purpose register. May not be null or stackpointer.
+     */
+    public void orn(int size, Register dst, Register src1, Register src2) {
+        super.orn(size, dst, src1, src2, ShiftType.LSL, 0);
     }
 
     /**
@@ -2253,11 +2317,28 @@ public class AArch64MacroAssembler extends AArch64Assembler {
 
         @Override
         public void patch(int codePos, int relative, byte[] code) {
-            int shiftSize = srcSize == 64 ? 3 : 2; // srcSize is either 64 or 32
+            int shiftSize = 0;
+            switch (srcSize) {
+                case 64:
+                    shiftSize = 3;
+                    break;
+                case 32:
+                    shiftSize = 2;
+                    break;
+                case 16:
+                    shiftSize = 1;
+                    break;
+                case 8:
+                    shiftSize = 0;
+                    break;
+                default:
+                    assert false : "srcSize must be either 8, 16, 32, or 64";
+            }
+
             int pos = instructionPosition;
 
             int targetAddress = pos + relative;
-            assert (targetAddress & ((1 << shiftSize) - 1)) == 0 : "shift bits must be zero";
+            assert shiftSize == 0 || (targetAddress & ((1 << shiftSize) - 1)) == 0 : "shift bits must be zero";
 
             int relativePageDifference = PatcherUtil.computeRelativePageDifference(targetAddress, pos, 1 << 12);
 

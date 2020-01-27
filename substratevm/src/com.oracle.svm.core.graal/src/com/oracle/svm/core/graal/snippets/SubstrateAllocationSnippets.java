@@ -172,7 +172,7 @@ public abstract class SubstrateAllocationSnippets extends AllocationSnippets {
 
     /** Foreign call: {@link #NEW_MULTI_ARRAY}. */
     @RestrictHeapAccess(access = RestrictHeapAccess.Access.NO_ALLOCATION, reason = "Must not allocate in the implementation of allocation.")
-    @SubstrateForeignCallTarget
+    @SubstrateForeignCallTarget(stubCallingConvention = false)
     private static Object newMultiArrayStub(Word dynamicHub, int rank, Word dimensionsStackValue) {
         /*
          * All dimensions must be checked here up front, since a previous dimension of length 0
@@ -236,7 +236,7 @@ public abstract class SubstrateAllocationSnippets extends AllocationSnippets {
     private static native void callHubErrorStub(@ConstantNodeParameter ForeignCallDescriptor descriptor, Class<?> hub);
 
     /** Foreign call: {@link #HUB_ERROR}. */
-    @SubstrateForeignCallTarget
+    @SubstrateForeignCallTarget(stubCallingConvention = true)
     private static void hubErrorStub(DynamicHub hub) throws InstantiationException {
         if (hub == null) {
             throw new NullPointerException("Allocation type is null.");
@@ -270,7 +270,7 @@ public abstract class SubstrateAllocationSnippets extends AllocationSnippets {
     private static native void callArrayHubErrorStub(@ConstantNodeParameter ForeignCallDescriptor descriptor, Class<?> elementType);
 
     /** Foreign call: {@link #ARRAY_HUB_ERROR}. */
-    @SubstrateForeignCallTarget
+    @SubstrateForeignCallTarget(stubCallingConvention = true)
     private static void arrayHubErrorStub(DynamicHub elementType) {
         if (elementType == null) {
             throw new NullPointerException("Allocation type is null.");
@@ -398,7 +398,7 @@ public abstract class SubstrateAllocationSnippets extends AllocationSnippets {
 
     public abstract static class Templates extends SubstrateTemplates {
         protected final AllocationSnippetCounters snippetCounters;
-        private AllocationProfilingData profilingData;
+        private final AllocationProfilingData profilingData;
 
         private final SnippetInfo allocateInstance;
         private final SnippetInfo allocateArray;
@@ -411,6 +411,7 @@ public abstract class SubstrateAllocationSnippets extends AllocationSnippets {
                         SnippetReflectionProvider snippetReflection) {
             super(options, factories, providers, snippetReflection);
             snippetCounters = new AllocationSnippetCounters(groupFactory);
+            profilingData = new SubstrateAllocationProfilingData(snippetCounters, null);
 
             allocateInstance = snippet(SubstrateAllocationSnippets.class, "allocateInstance", null, receiver, ALLOCATION_LOCATION_IDENTITIES);
             allocateArray = snippet(SubstrateAllocationSnippets.class, "allocateArray", null, receiver, ALLOCATION_LOCATION_IDENTITIES);
@@ -445,10 +446,7 @@ public abstract class SubstrateAllocationSnippets extends AllocationSnippets {
                 // Create one object per snippet instantiation - this kills the snippet caching as
                 // we need to add the object as a constant to the snippet.
                 return new SubstrateAllocationProfilingData(snippetCounters, createAllocationSiteCounter(node, type));
-            } else if (profilingData == null) {
-                profilingData = new SubstrateAllocationProfilingData(snippetCounters, null);
             }
-
             return profilingData;
         }
 
