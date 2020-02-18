@@ -60,10 +60,18 @@ public class ReflectAccessVerifier extends AbstractAccessVerifier {
     }
 
     public boolean verifyForName(JNIEnvironment env, JNIObjectHandle callerClass, String className) {
+        return verifyLoadClass(env, callerClass, className);
+    }
+
+    public boolean verifyLoadClass(JNIEnvironment env, JNIObjectHandle callerClass, String className) {
         if (shouldApproveWithoutChecks(env, callerClass)) {
             return true;
         }
         return className == null || typeAccessChecker.getConfiguration().get(className) != null;
+    }
+
+    public boolean verifyGetPackageInfo(JNIEnvironment env, JNIObjectHandle callerClass, String className) {
+        return verifyForName(env, callerClass, className);
     }
 
     public boolean verifyGetField(JNIEnvironment env, JNIObjectHandle clazz, JNIObjectHandle name, JNIObjectHandle result, JNIObjectHandle declaring, JNIObjectHandle callerClass) {

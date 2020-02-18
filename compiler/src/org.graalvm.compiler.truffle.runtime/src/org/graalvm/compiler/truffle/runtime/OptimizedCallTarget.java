@@ -705,7 +705,7 @@ public abstract class OptimizedCallTarget implements CompilableTruffleAST, RootC
                 throw new OptimizationFailedException(error, this);
             }
 
-            boolean truffleCompilationExceptionsAreFatal = TruffleRuntimeOptions.areTruffleCompilationExceptionsFatal(this);
+            boolean truffleCompilationExceptionsAreFatal = engine.compilationExceptionsAreFatal || engine.performanceWarningsAreFatal;
             if (getOptionValue(PolyglotCompilerOptions.CompilationExceptionsArePrinted) || truffleCompilationExceptionsAreFatal) {
                 log(reasonAndStackTrace.get());
                 if (truffleCompilationExceptionsAreFatal) {

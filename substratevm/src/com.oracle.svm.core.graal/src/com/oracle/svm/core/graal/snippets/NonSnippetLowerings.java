@@ -59,7 +59,7 @@ import org.graalvm.compiler.nodes.extended.ForeignCallNode;
 import org.graalvm.compiler.nodes.extended.GetClassNode;
 import org.graalvm.compiler.nodes.extended.LoadHubNode;
 import org.graalvm.compiler.nodes.java.MethodCallTargetNode;
-import org.graalvm.compiler.nodes.memory.HeapAccess.BarrierType;
+import org.graalvm.compiler.nodes.memory.OnHeapMemoryAccess.BarrierType;
 import org.graalvm.compiler.nodes.memory.ReadNode;
 import org.graalvm.compiler.nodes.memory.address.AddressNode;
 import org.graalvm.compiler.nodes.memory.address.OffsetAddressNode;
@@ -153,7 +153,7 @@ public abstract class NonSnippetLowerings {
 
             StructuredGraph graph = node.graph();
             ForeignCallNode foreignCallNode = graph.add(new ForeignCallNode(runtimeConfig.getProviders().getForeignCalls(), descriptor, node.stamp(NodeView.DEFAULT), arguments));
-            foreignCallNode.setStateAfter(node.stateAfter());
+            foreignCallNode.setStateAfter(node.createStateDuring());
             graph.replaceFixedWithFixed(node, foreignCallNode);
         }
     }

@@ -336,9 +336,9 @@ public final class TruffleFeature implements com.oracle.svm.core.graal.GraalFeat
         invokeStaticMethod("com.oracle.truffle.polyglot.InstrumentCache", "resetNativeImageState", Collections.emptyList());
         invokeStaticMethod("org.graalvm.polyglot.Engine$ImplHolder", "resetPreInitializedEngine", Collections.emptyList());
         invokeStaticMethod("com.oracle.truffle.api.impl.TruffleLocator", "resetNativeImageState", Collections.emptyList());
-        invokeStaticMethod("com.oracle.truffle.api.interop.Message", "resetNativeImageState", Collections.emptyList());
         invokeStaticMethod("com.oracle.truffle.api.library.LibraryFactory", "resetNativeImageState", Collections.emptyList());
         invokeStaticMethod("com.oracle.truffle.api.nodes.Node", "resetNativeImageState", Collections.emptyList());
+        invokeStaticMethod("com.oracle.truffle.api.source.Source", "resetNativeImageState", Collections.emptyList());
     }
 
     public static boolean useTruffleCompiler() {
@@ -407,7 +407,6 @@ public final class TruffleFeature implements com.oracle.svm.core.graal.GraalFeat
 
         config.registerHierarchyForReflectiveInstantiation(DefaultExportProvider.class);
         config.registerHierarchyForReflectiveInstantiation(TruffleInstrument.class);
-        config.registerHierarchyForReflectiveInstantiation(com.oracle.truffle.api.instrumentation.InstrumentableFactory.class);
 
         if (useTruffleCompiler()) {
             SubstrateTruffleRuntime truffleRuntime = (SubstrateTruffleRuntime) Truffle.getRuntime();
@@ -444,7 +443,7 @@ public final class TruffleFeature implements com.oracle.svm.core.graal.GraalFeat
                             partialEvaluator.getProviders().getStampProvider(),
                             snippetReflection,
                             graalFeature.getHostedProviders().getWordTypes(),
-                            graalFeature.getHostedProviders().getGC());
+                            graalFeature.getHostedProviders().getPlatformConfigurationProvider());
             newHostedProviders.setGraphBuilderPlugins(graphBuilderConfig.getPlugins());
 
             graalFeature.initializeRuntimeCompilationConfiguration(newHostedProviders, graphBuilderConfig, this::includeCallee, this::deoptimizeOnException);
@@ -522,6 +521,16 @@ public final class TruffleFeature implements com.oracle.svm.core.graal.GraalFeat
             } else if (invocationPlugins.lookupInvocation(original) != null) {
                 return InlineInfo.DO_NOT_INLINE_WITH_EXCEPTION;
             } else if (original.getAnnotation(ExplodeLoop.class) != null) {
+                /*
+                 * We cannot inline a method annotated with @ExplodeLoop, because then loops are no
+                 * longer exploded.
+                 */
+                return InlineInfo.DO_NOT_INLINE_WITH_EXCEPTION;
+            } else if (builder.getMethod().getAnnotation(ExplodeLoop.class) != null) {
+                /*
+                 * We cannot inline anything into a method annotated with @ExplodeLoop, because then
+                 * loops of the inlined callee are exploded too.
+                 */
                 return InlineInfo.DO_NOT_INLINE_WITH_EXCEPTION;
             } else if (replacements.hasSubstitution(original, builder.bci())) {
                 return InlineInfo.DO_NOT_INLINE_WITH_EXCEPTION;

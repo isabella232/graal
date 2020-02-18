@@ -79,8 +79,8 @@ import org.graalvm.compiler.nodes.graphbuilderconf.GraphBuilderConfiguration;
 import org.graalvm.compiler.nodes.graphbuilderconf.InvocationPlugin;
 import org.graalvm.compiler.nodes.graphbuilderconf.InvocationPlugins;
 import org.graalvm.compiler.nodes.graphbuilderconf.NodeIntrinsicPluginFactory;
-import org.graalvm.compiler.nodes.spi.GCProvider;
 import org.graalvm.compiler.nodes.spi.LoweringProvider;
+import org.graalvm.compiler.nodes.spi.PlatformConfigurationProvider;
 import org.graalvm.compiler.nodes.spi.StampProvider;
 import org.graalvm.compiler.options.OptionValues;
 import org.graalvm.compiler.phases.BasePhase;
@@ -222,6 +222,7 @@ import com.oracle.svm.hosted.c.CConstantValueSupportImpl;
 import com.oracle.svm.hosted.c.GraalAccess;
 import com.oracle.svm.hosted.c.NativeLibraries;
 import com.oracle.svm.hosted.c.SizeOfSupportImpl;
+import com.oracle.svm.hosted.c.codegen.CCompilerInvoker;
 import com.oracle.svm.hosted.cenum.CEnumCallWrapperSubstitutionProcessor;
 import com.oracle.svm.hosted.classinitialization.ClassInitializationFeature;
 import com.oracle.svm.hosted.classinitialization.ClassInitializationSupport;
@@ -443,26 +444,19 @@ public class NativeImageGenerator {
                     ImageSingletons.add(RuntimeOptionValues.class, new RuntimeOptionValues(optionProvider.getRuntimeValues(), allOptionNames));
 
                     doRun(entryPoints, javaMainSupport, imageName, k, harnessSubstitutions, compilationExecutor, analysisExecutor);
-                } finally {
+                } catch (Throwable t) {
                     try {
-                        /*
-                         * Make sure we clean up after ourselves even in the case of an exception.
-                         */
-                        if (deleteTempDirectory) {
-                            deleteAll(tempDirectory());
-                        }
-                        featureHandler.forEachFeature(Feature::cleanup);
-                    } catch (Throwable e) {
-                        /*
-                         * Suppress subsequent errors so that we unwind the original error brought
-                         * us here.
-                         */
+                        cleanup();
+                    } catch (Throwable ecleanup) {
+                        t.addSuppressed(ecleanup);
                     }
+                    throw t;
                 }
+                cleanup();
             }).get();
         } catch (InterruptedException | CancellationException e) {
             System.out.println("Interrupted!");
-            throw new InterruptImageBuilding();
+            throw new InterruptImageBuilding(e);
         } catch (ExecutionException e) {
             if (e.getCause() instanceof RuntimeException) {
                 throw (RuntimeException) e.getCause();
@@ -472,6 +466,13 @@ public class NativeImageGenerator {
         } finally {
             shutdownPoolSafe();
         }
+    }
+
+    private void cleanup() {
+        if (deleteTempDirectory) {
+            deleteAll(tempDirectory());
+        }
+        featureHandler.forEachFeature(Feature::cleanup);
     }
 
     protected static void setSystemPropertiesForImageEarly() {
@@ -725,6 +726,13 @@ public class NativeImageGenerator {
                     }
                 }
 
+                /*
+                 * Libraries defined via @CLibrary annotations are added at the end of the list of
+                 * libraries so that the written object file AND the static JDK libraries can depend
+                 * on them.
+                 */
+                nativeLibraries.processAnnotated();
+
                 AfterAnalysisAccessImpl postConfig = new AfterAnalysisAccessImpl(featureHandler, loader, bigbang, debug);
                 featureHandler.forEachFeature(feature -> feature.afterAnalysis(postConfig));
 
@@ -838,6 +846,11 @@ public class NativeImageGenerator {
                 HostedSnippetReflectionProvider aSnippetReflection = new HostedSnippetReflectionProvider((SVMHost) aUniverse.hostVM(), aWordTypes);
 
                 prepareLibC();
+
+                CCompilerInvoker compilerInvoker = CCompilerInvoker.create(tempDirectory());
+                compilerInvoker.verifyCompiler();
+                ImageSingletons.add(CCompilerInvoker.class, compilerInvoker);
+
                 nativeLibraries = setupNativeLibraries(imageName, aConstantReflection, aMetaAccess, aSnippetReflection, cEnumProcessor, classInitializationSupport);
 
                 ForeignCallsProvider aForeignCalls = new SubstrateForeignCallsProvider();
@@ -990,13 +1003,13 @@ public class NativeImageGenerator {
          */
         LoweringProvider aLoweringProvider = SubstrateLoweringProvider.create(aMetaAccess, null);
         StampProvider aStampProvider = new SubstrateStampProvider(aMetaAccess);
-        GCProvider gcProvider = ImageSingletons.lookup(Heap.class).getGCProvider();
+        PlatformConfigurationProvider platformConfigurationProvider = ImageSingletons.lookup(Heap.class).getPlatformConfigurationProvider();
         HostedProviders aProviders = new HostedProviders(aMetaAccess, null, aConstantReflection, aConstantFieldProvider, aForeignCalls, aLoweringProvider, null, aStampProvider, aSnippetReflection,
-                        aWordTypes, gcProvider);
+                        aWordTypes, platformConfigurationProvider);
         BytecodeProvider bytecodeProvider = new ResolvedJavaMethodBytecodeProvider();
         SubstrateReplacements aReplacments = new SubstrateReplacements(aProviders, aSnippetReflection, bytecodeProvider, target, new SubstrateGraphMakerFactory(aWordTypes));
         aProviders = new HostedProviders(aMetaAccess, null, aConstantReflection, aConstantFieldProvider, aForeignCalls, aLoweringProvider, aReplacments, aStampProvider,
-                        aSnippetReflection, aWordTypes, gcProvider);
+                        aSnippetReflection, aWordTypes, platformConfigurationProvider);
 
         return new Inflation(options, aUniverse, aProviders, annotationSubstitutionProcessor, analysisExecutor);
     }

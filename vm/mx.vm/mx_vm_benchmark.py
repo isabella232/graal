@@ -83,7 +83,7 @@ class GraalVm(mx_benchmark.OutputCapturingJavaVm):
         self.extract_vm_info(args)
         out = mx.TeeOutputCapture(mx.OutputCapture())
         args = self.post_process_launcher_command_line_args(args)
-        mx.log("Running '{}' on '{}' with args: '{}'".format(cmd, self.name(), args))
+        mx.log("Running '{}' on '{}' with args: '{}'".format(cmd, self.name(), " ".join(args)))
         code = mx.run([os.path.join(mx_sdk_vm_impl.graalvm_home(fatalIfMissing=True), 'bin', cmd)] + args, out=out, err=out, cwd=cwd, nonZeroIsFatal=False)
         out = out.underlying.data
         dims = self.dimensions(cwd, args, code, out)
@@ -264,7 +264,7 @@ class NativeImageVM(GraalVm):
 
             base_image_build_args = [os.path.join(mx_sdk_vm_impl.graalvm_home(fatalIfMissing=True), 'bin', 'native-image')]
             base_image_build_args += ['--no-fallback']
-            base_image_build_args += ['-J-ea', '-J-esa', '-H:+VerifyGraalGraphs', '-H:+VerifyPhases', '-H:+TraceClassInitialization'] if self.is_gate else []
+            base_image_build_args += ['--no-server', '-J-ea', '-J-esa', '-H:+VerifyGraalGraphs', '-H:+VerifyPhases', '-H:+TraceClassInitialization'] if self.is_gate else []
             base_image_build_args += system_properties
             base_image_build_args += classpath_arguments
             base_image_build_args += executable
@@ -272,7 +272,7 @@ class NativeImageVM(GraalVm):
             if needs_config:
                 base_image_build_args += ['-H:ConfigurationFileDirectories=' + config.config_dir]
             if self.is_llvm:
-                base_image_build_args += ['-H:CompilerBackend=llvm']
+                base_image_build_args += ['-H:CompilerBackend=llvm', '-H:Features=org.graalvm.home.HomeFinderFeature']
             base_image_build_args += config.extra_image_build_arguments
 
             # PGO instrumentation

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017, 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2017, 2020, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -91,6 +91,7 @@ import com.oracle.truffle.api.nodes.Node;
 import com.oracle.truffle.api.nodes.RootNode;
 import com.oracle.truffle.api.source.Source;
 import com.oracle.truffle.api.source.SourceSection;
+import java.nio.file.Path;
 import org.graalvm.options.OptionKey;
 
 final class EngineAccessor extends Accessor {
@@ -482,9 +483,16 @@ final class EngineAccessor extends Accessor {
         }
 
         @Override
-        public boolean inContextPreInitialization(Object polyglotLanguageContext) {
-            PolyglotLanguageContext context = (PolyglotLanguageContext) polyglotLanguageContext;
-            return context.context.inContextPreInitialization;
+        public boolean inContextPreInitialization(Object polyglotObject) {
+            PolyglotContextImpl polyglotContext;
+            if (polyglotObject instanceof PolyglotContextImpl) {
+                polyglotContext = (PolyglotContextImpl) polyglotObject;
+            } else if (polyglotObject instanceof PolyglotLanguageContext) {
+                polyglotContext = ((PolyglotLanguageContext) polyglotObject).context;
+            } else {
+                throw new AssertionError();
+            }
+            return polyglotContext.inContextPreInitialization;
         }
 
         @Override
@@ -506,6 +514,12 @@ final class EngineAccessor extends Accessor {
         public Map<String, ? extends Object> getExportedSymbols() {
             PolyglotContextImpl currentContext = PolyglotContextImpl.currentNotEntered();
             return currentContext.getPolyglotBindings().as(Map.class);
+        }
+
+        @Override
+        public Object getPolyglotBindingsObject() {
+            PolyglotContextImpl currentContext = PolyglotContextImpl.currentNotEntered();
+            return currentContext.getPolyglotBindingsObject();
         }
 
         @Override
@@ -985,6 +999,33 @@ final class EngineAccessor extends Accessor {
                 throw new IllegalArgumentException(String.format("Only %s is supported.", OptionValuesImpl.class.getName()));
             }
             return ((OptionValuesImpl) optionValues).getUnparsedOptionValue(optionKey);
+        }
+
+        @Override
+        public String getRelativePathInLanguageHome(TruffleFile truffleFile) {
+            return FileSystems.getRelativePathInLanguageHome(truffleFile);
+        }
+
+        @Override
+        public void onSourceCreated(Source source) {
+            PolyglotContextImpl currentContext = PolyglotContextImpl.currentNotEntered();
+            if (currentContext != null && currentContext.sourcesToInvalidate != null) {
+                currentContext.sourcesToInvalidate.add(source);
+            }
+        }
+
+        @Override
+        public String getReinitializedPath(TruffleFile truffleFile) {
+            FileSystem fs = EngineAccessor.LANGUAGE.getFileSystem(truffleFile);
+            Path path = EngineAccessor.LANGUAGE.getPath(truffleFile);
+            return ((FileSystems.PreInitializeContextFileSystem) fs).pathToString(path);
+        }
+
+        @Override
+        public URI getReinitializedURI(TruffleFile truffleFile) {
+            FileSystem fs = EngineAccessor.LANGUAGE.getFileSystem(truffleFile);
+            Path path = EngineAccessor.LANGUAGE.getPath(truffleFile);
+            return ((FileSystems.PreInitializeContextFileSystem) fs).absolutePathtoURI(path);
         }
     }
 

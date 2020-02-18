@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017, 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2017, 2020, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -80,6 +80,7 @@ import com.oracle.truffle.api.TruffleContext;
 import com.oracle.truffle.api.TruffleLanguage;
 import com.oracle.truffle.api.impl.Accessor.CastUnsafe;
 import com.oracle.truffle.api.nodes.LanguageInfo;
+import com.oracle.truffle.api.source.Source;
 import com.oracle.truffle.polyglot.HostLanguage.HostContext;
 import com.oracle.truffle.polyglot.PolyglotEngineImpl.CancelExecution;
 
@@ -179,6 +180,7 @@ final class PolyglotContextImpl extends AbstractContextImpl implements com.oracl
     final PolyglotContextImpl parent;
     volatile Map<String, Value> polyglotBindings; // for direct legacy access
     volatile Value polyglotHostBindings; // for accesses from the polyglot api
+    private final PolyglotBindings polyglotBindingsObject = new PolyglotBindings(this);
     final PolyglotLanguage creator; // creator for internal contexts
     final Map<String, Object> creatorArguments; // special arguments for internal contexts
     final ContextWeakReference weakReference;
@@ -191,6 +193,7 @@ final class PolyglotContextImpl extends AbstractContextImpl implements com.oracl
 
     private final List<PolyglotContextImpl> childContexts = new ArrayList<>();
     boolean inContextPreInitialization; // effectively final
+    List<Source> sourcesToInvalidate;  // Non null only during content pre-initialization
 
     final AtomicLong volatileStatementCounter = new AtomicLong();
     long statementCounter;
@@ -701,6 +704,10 @@ final class PolyglotContextImpl extends AbstractContextImpl implements com.oracl
                 this.polyglotHostBindings = getAPIAccess().newValue(polyglotBindings, new PolyglotBindingsValue(getHostContext()));
             }
         }
+    }
+
+    public Object getPolyglotBindingsObject() {
+        return polyglotBindingsObject;
     }
 
     void checkClosed() {
@@ -1287,6 +1294,7 @@ final class PolyglotContextImpl extends AbstractContextImpl implements com.oracl
                         EnvironmentAccess.INHERIT, null, null, null);
         final PolyglotContextImpl context = new PolyglotContextImpl(engine, config);
         try {
+            context.sourcesToInvalidate = new ArrayList<>();
             final String oldOption = engine.engineOptionValues.get(PolyglotEngineOptions.PreinitializeContexts);
             final String newOption = ImageBuildTimeOptions.get(ImageBuildTimeOptions.PREINITIALIZE_CONTEXTS_NAME);
             final String optionValue;
@@ -1328,6 +1336,10 @@ final class PolyglotContextImpl extends AbstractContextImpl implements com.oracl
             disposeStaticContext(context);
             return context;
         } finally {
+            for (Source sourceToInvalidate : context.sourcesToInvalidate) {
+                EngineAccessor.SOURCE.invalidateAfterPreinitialiation(sourceToInvalidate);
+            }
+            context.sourcesToInvalidate = null;
             fs.onPreInitializeContextEnd();
             internalFs.onPreInitializeContextEnd();
             FileSystems.resetDefaultFileSystemProvider();

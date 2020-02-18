@@ -45,7 +45,7 @@ import org.graalvm.compiler.nodes.FrameState;
 import org.graalvm.compiler.nodes.ValueNode;
 import org.graalvm.compiler.nodes.graphbuilderconf.GraphBuilderContext;
 import org.graalvm.compiler.nodes.memory.AbstractMemoryCheckpoint;
-import org.graalvm.compiler.nodes.memory.MemoryCheckpoint;
+import org.graalvm.compiler.nodes.memory.MultiMemoryKill;
 import org.graalvm.compiler.nodes.spi.LIRLowerable;
 import org.graalvm.compiler.nodes.spi.NodeLIRBuilderTool;
 import org.graalvm.word.LocationIdentity;
@@ -67,7 +67,7 @@ import jdk.vm.ci.meta.Value;
           size = SIZE_2,
           sizeRationale = "Rough estimation of the call operation itself.")
 // @formatter:on
-public class ForeignCallNode extends AbstractMemoryCheckpoint implements LIRLowerable, DeoptimizingNode.DeoptDuring, MemoryCheckpoint.Multi {
+public class ForeignCallNode extends AbstractMemoryCheckpoint implements LIRLowerable, DeoptimizingNode.DeoptDuring, MultiMemoryKill {
     public static final NodeClass<ForeignCallNode> TYPE = NodeClass.create(ForeignCallNode.class);
 
     @Input protected NodeInputList<ValueNode> arguments;
@@ -218,7 +218,7 @@ public class ForeignCallNode extends AbstractMemoryCheckpoint implements LIRLowe
                         (currentStateAfter.stackSize() > 1 && currentStateAfter.stackAt(currentStateAfter.stackSize() - 2) == this)) {
             // The result of this call is on the top of stack, so roll back to the previous bci.
             assert bci != BytecodeFrame.UNKNOWN_BCI : this;
-            newStateDuring = currentStateAfter.duplicateModifiedDuringCall(bci, this.getStackKind());
+            newStateDuring = currentStateAfter.duplicateModified(currentStateAfter.graph(), bci, false, true, this.getStackKind(), null, null);
         } else {
             newStateDuring = currentStateAfter;
         }
