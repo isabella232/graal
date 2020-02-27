@@ -73,7 +73,7 @@ else:
 def unicode_utf8(string):
     if sys.version_info[0] < 3:
         if isinstance(string, str):
-            return unicode(string, 'utf-8')
+            return unicode(string, 'utf-8') # pylint: disable=undefined-variable
     elif isinstance(string, bytes):
         return str(string)
     return string
@@ -208,10 +208,10 @@ def _get_component_type_base(c, apply_substitutions=False):
         result = '<jre_base>/lib/'
     elif isinstance(c, mx_sdk.GraalVMSvmMacro):
         svm_component = get_component('svm', stage1=True)
-        result = _get_component_type_base(svm_component, apply_substitutions=apply_substitutions) + '/' + svm_component.dir_name + '/macros/'
+        result = _get_component_type_base(svm_component, apply_substitutions=apply_substitutions) + svm_component.dir_name + '/macros/'
     elif isinstance(c, mx_sdk.GraalVMSvmStaticLib):
         svm_component = get_component('svm')
-        result = _get_component_type_base(svm_component, apply_substitutions=apply_substitutions) + '/' + svm_component.dir_name + '/static-libs/'
+        result = _get_component_type_base(svm_component, apply_substitutions=apply_substitutions) + svm_component.dir_name + '/static-libs/'
     elif isinstance(c, mx_sdk.GraalVmComponent):
         result = '<jdk_base>/'
     else:
@@ -238,6 +238,22 @@ def _get_macros_dir():
     if not svm_component:
         return None
     return _get_component_type_base(svm_component) + svm_component.dir_name + '/macros'
+
+
+def _get_main_component(components):
+    """
+    :type components: list[mx_sdk_vm.GraalVmComponent]
+    :rtype: mx_sdk_vm.GraalVmComponent
+    """
+    assert len(components)
+    main_component = min(components, key=lambda c: (c.priority, not has_svm_launcher(c)))  # we prefer components with low priority and native launchers (note that this is a `min` function)
+    if any([comp for comp in components if comp != main_component and comp.priority == main_component.priority and has_svm_launcher(comp)]):
+        raise mx.abort("""\
+Cannot determine the main component between:
+ - {}
+More than one component has priority {} and native launchers.\
+""".format('\n - '.join(['{} (has native launchers: {})'.format(c.name, has_svm_launcher(c)) for c in components]), main_component.priority))
+    return main_component
 
 
 _src_jdk = mx_sdk_vm.base_jdk()
@@ -445,7 +461,7 @@ class BaseGraalVmLayoutDistribution(_with_metaclass(ABCMeta, mx.LayoutDistributi
                 _add(layout, base_dir, {
                     'source_type': 'file',
                     'path': _src_jdk_dir,
-                    'exclude': exclusion_list + _escaping_links + [
+                    'exclude': exclusion_list + sorted(_escaping_links) + [
                         exclude_base + '/COPYRIGHT',
                         exclude_base + '/LICENSE',
                         exclude_base + '/README.html',
@@ -517,7 +533,7 @@ class BaseGraalVmLayoutDistribution(_with_metaclass(ABCMeta, mx.LayoutDistributi
         component_suites = {}
         installables = {}
         has_graal_compiler = False
-        for _component in self.components:
+        for _component in sorted(self.components, key=lambda c: c.name):
             mx.logv('Adding {} ({}) to the {} {}'.format(_component.name, _component.__class__.__name__, name, self.__class__.__name__))
             _component_type_base = _get_component_type_base(_component)
             if isinstance(_component, (mx_sdk.GraalVmJreComponent, mx_sdk.GraalVmJdkComponent)):
@@ -587,7 +603,7 @@ class BaseGraalVmLayoutDistribution(_with_metaclass(ABCMeta, mx.LayoutDistributi
             _jre_bin_names = []
             graalvm_dists = set()
 
-            for _launcher_config in _get_launcher_configs(_component):
+            for _launcher_config in sorted(_get_launcher_configs(_component), key=lambda c: c.destination):
                 graalvm_dists.update(_launcher_config.jar_distributions)
                 _launcher_dest = _component_base + GraalVmLauncher.get_launcher_destination(_launcher_config, stage1)
                 # add `LauncherConfig.destination` to the layout
@@ -612,7 +628,7 @@ class BaseGraalVmLayoutDistribution(_with_metaclass(ABCMeta, mx.LayoutDistributi
                 _add_native_image_macro(_launcher_config, _component)
                 if with_polyglot_launcher and isinstance(_launcher_config, mx_sdk.LanguageLauncherConfig):
                     _add(layout, _component_base, 'dependency:{}/polyglot.config'.format(launcher_project), _component)
-            for _library_config in _get_library_configs(_component):
+            for _library_config in sorted(_get_library_configs(_component), key=lambda c: c.destination):
                 graalvm_dists.update(_library_config.jar_distributions)
                 if _library_config.jvm_library:
                     assert isinstance(_component, (mx_sdk.GraalVmJdkComponent, mx_sdk.GraalVmJreComponent))
@@ -631,7 +647,7 @@ class BaseGraalVmLayoutDistribution(_with_metaclass(ABCMeta, mx.LayoutDistributi
             graalvm_dists.difference_update(_component.jar_distributions)
             graalvm_dists.difference_update(_component.jvmci_parent_jars)
             graalvm_dists.difference_update(_component.builder_jar_distributions)
-            _add(layout, '<jre_base>/lib/graalvm/', ['dependency:' + d for d in graalvm_dists], _component, with_sources=True)
+            _add(layout, '<jre_base>/lib/graalvm/', ['dependency:' + d for d in sorted(graalvm_dists)], _component, with_sources=True)
 
             for _provided_executable in _component.provided_executables:
                 _provided_executable = mx_subst.results_substitutions.substitute(_provided_executable)
@@ -661,8 +677,8 @@ class BaseGraalVmLayoutDistribution(_with_metaclass(ABCMeta, mx.LayoutDistributi
         if installer:
             # Register pre-installed components
             components_dir = _get_component_type_base(installer) + installer.dir_name + '/components/'
-            for components in installables.values():
-                main_component = min(components, key=lambda c: c.priority)
+            for installable_components in installables.values():
+                main_component = _get_main_component(installable_components)
                 _add(layout, components_dir + main_component.installable_id + '.component', """string:Bundle-Name={name}
 Bundle-Symbolic-Name={id}
 Bundle-Version={version}
@@ -716,9 +732,10 @@ x-GraalVM-Component-Distribution=bundled
         if parent_release_file is not None and exists(parent_release_file):
             with open(parent_release_file, 'r') as f:
                 for line in f:
-                    assert line.count('=') > 0, "The release file of the base JDK ('{}') contains a line without the '=' sign: '{}'".format(parent_release_file, line)
-                    k, v = line.strip().split('=', 1)
-                    _metadata_dict[k] = v
+                    if line.strip() != '':  # on Windows, the release file might have extra line terminators
+                        assert line.count('=') > 0, "The release file of the base JDK ('{}') contains a line without the '=' sign: '{}'".format(parent_release_file, line)
+                        k, v = line.strip().split('=', 1)
+                        _metadata_dict[k] = v
 
         _metadata_dict.setdefault('JAVA_VERSION', quote(_src_jdk.version))
         _metadata_dict.setdefault('OS_NAME', quote(get_graalvm_os()))
@@ -745,9 +762,6 @@ x-GraalVM-Component-Distribution=bundled
 
 
 class BaseGraalVmLayoutDistributionTask(mx.LayoutArchiveTask):
-    def __init__(self, args, dist):
-        super(BaseGraalVmLayoutDistributionTask, self).__init__(args, dist)
-
     def build(self):
         assert isinstance(self.subject, BaseGraalVmLayoutDistribution)
         super(BaseGraalVmLayoutDistributionTask, self).build()
@@ -1104,7 +1118,7 @@ def _file_needs_build(newest_input, filepath, contents_getter):
         return filepath + " does not exist"
     if newest_input and ts.isOlderThan(newest_input):
         return "{} is older than {}".format(ts, newest_input)
-    with open(filepath, 'r') as f:
+    with io.open(filepath, mode='r', encoding='utf-8') as f:
         on_disk = unicode_utf8(f.read())
     if contents_getter() != on_disk:
         return "content not up to date"
@@ -1202,7 +1216,7 @@ class NativePropertiesBuildTask(mx.ProjectBuildTask):
                     '-Dorg.graalvm.launcher.relative.home=' + relpath(graalvm_image_destination, graalvm_home)
                 ]
 
-                for language, path in image_config.relative_home_paths.items():
+                for language, path in sorted(image_config.relative_home_paths.items()):
                     build_args += ['-Dorg.graalvm.launcher.relative.' + language + '.home=' + path]
 
             build_args += [mx_subst.string_substitutions.substitute(arg) for arg in image_config.build_args]
@@ -1778,7 +1792,7 @@ def graalvm_home_relative_classpath(dependencies, start=None, with_boot_jars=Fal
         if not with_boot_jars and (graalvm_location.startswith(boot_jars_directory) or _cp_entry.isJreLibrary()):
             continue
         _cp.add(relpath(graalvm_location, start))
-    return os.pathsep.join(_cp)
+    return os.pathsep.join(sorted(_cp))
 
 
 class GraalVmSVMNativeImageBuildTask(GraalVmNativeImageBuildTask):
@@ -2004,7 +2018,10 @@ class GraalVmStandaloneComponent(mx.LayoutTARDistribution):  # pylint: disable=t
         """
         other_comp_names = []
         if _get_svm_support().is_supported() and _get_launcher_configs(component):
-            other_comp_names += [c.short_name for c in registered_graalvm_components(stage1=True) if c.short_name in ('svm', 'svmee')]
+            if 'svm' in [c.short_name for c in registered_graalvm_components(stage1=True)]:
+                other_comp_names.append('svm')
+            if 'svmee' in [c.short_name for c in registered_graalvm_components(stage1=True)]:
+                other_comp_names.append('svmee')
 
         self.main_comp_dir_name = component.dir_name
 
@@ -2048,7 +2065,7 @@ class GraalVmStandaloneComponent(mx.LayoutTARDistribution):  # pylint: disable=t
 
         sorted_suites = sorted(mx.suites(), key=lambda s: s.name)
         metadata = BaseGraalVmLayoutDistribution._get_metadata(sorted_suites)
-        layout.setdefault(base_dir + '/release', []).append('string:' + metadata)
+        layout.setdefault(base_dir + 'release', []).append('string:' + metadata)
 
         for dependency_name, details in component.standalone_dependencies.items():
             dependency_path = details[0]
@@ -2292,14 +2309,14 @@ def mx_register_dynamic_suite_constituents(register_project, register_distributi
 
     # Create installables
     for components in installables.values():
-        main_component = min(components, key=lambda c: c.priority)
+        main_component = _get_main_component(components)
         installable_component = GraalVmInstallableComponent(main_component, extra_components=[c for c in components if c != main_component])
         register_distribution(installable_component)
         with_debuginfo.append(installable_component)
 
     # Create standalones
     for components in installables.values():
-        main_component = min(components, key=lambda c: c.priority)
+        main_component = _get_main_component(components)
         if isinstance(main_component, mx_sdk.GraalVmTruffleComponent) and has_svm_launcher(main_component):
             dependencies = main_component.standalone_dependencies.keys()
             missing_dependencies = [dep for dep in dependencies if not has_component(dep)]
