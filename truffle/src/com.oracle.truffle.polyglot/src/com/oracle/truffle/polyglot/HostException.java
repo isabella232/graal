@@ -61,7 +61,12 @@ final class HostException extends RuntimeException implements TruffleException {
 
     @Override
     public String getMessage() {
-        return getOriginal().getMessage();
+        final String originalMessage = original.getMessage();
+        if (originalMessage == null) {
+            return original.getClass().getName();
+        } else {
+            return originalMessage;
+        }
     }
 
     @SuppressWarnings("sync-override")
