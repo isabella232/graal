@@ -46,8 +46,8 @@ f, plots = plt.subplots(len(traces), 1, sharex=True)
 
 for n, (plot, (title, key, scale)) in enumerate(zip(plots, traces)):
     for log in logs:
-        plot.plot([sample['elapsedTime'] / 1e9 for sample in log], [sample[key] / float(scale) for sample in log], '-')
-    all_values = [sample[key] / float(scale) for log in logs for sample in log]
+        plot.plot([sample['elapsedTime'] / 1e9 for sample in log], [sample.get(key, 0) / float(scale) for sample in log], '-')
+    all_values = [sample.get(key, 0) / float(scale) for log in logs for sample in log]
     min_value = min(all_values)
     max_value = max(all_values)
     if min_value == 0 and max_value == 0:
