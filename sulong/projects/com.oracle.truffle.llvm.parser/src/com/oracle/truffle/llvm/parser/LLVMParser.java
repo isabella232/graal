@@ -46,10 +46,10 @@ import com.oracle.truffle.llvm.runtime.CommonNodeFactory;
 import com.oracle.truffle.llvm.runtime.GetStackSpaceFactory;
 import com.oracle.truffle.llvm.runtime.LLVMAlias;
 import com.oracle.truffle.llvm.runtime.LLVMContext;
-import com.oracle.truffle.llvm.runtime.LLVMContext.ExternalLibrary;
+import com.oracle.truffle.llvm.runtime.ExternalLibrary;
 import com.oracle.truffle.llvm.runtime.LLVMFunction;
-import com.oracle.truffle.llvm.runtime.LLVMFunctionDescriptor.Function;
-import com.oracle.truffle.llvm.runtime.LLVMFunctionDescriptor.LazyLLVMIRFunction;
+import com.oracle.truffle.llvm.runtime.LLVMFunctionCode.Function;
+import com.oracle.truffle.llvm.runtime.LLVMFunctionCode.LazyLLVMIRFunction;
 import com.oracle.truffle.llvm.runtime.LLVMSymbol;
 import com.oracle.truffle.llvm.runtime.datalayout.DataLayout;
 import com.oracle.truffle.llvm.runtime.debug.LLVMSourceContext;
@@ -72,7 +72,7 @@ public final class LLVMParser {
         this.library = runtime.getLibrary();
     }
 
-    public LLVMParserResult parse(ModelModule module, DataLayout targetDataLayout, ArrayList<ExternalLibrary> dependencies) {
+    public LLVMParserResult parse(ModelModule module, DataLayout targetDataLayout) {
         List<GlobalVariable> externalGlobals = new ArrayList<>();
         List<GlobalVariable> definedGlobals = new ArrayList<>();
         List<FunctionSymbol> externalFunctions = new ArrayList<>();
@@ -85,7 +85,7 @@ public final class LLVMParser {
 
         LLVMSymbolReadResolver symbolResolver = new LLVMSymbolReadResolver(runtime, StackManager.createRootFrame(), GetStackSpaceFactory.createAllocaFactory(), targetDataLayout);
         createDebugInfo(module, symbolResolver);
-        return new LLVMParserResult(runtime, definedFunctions, externalFunctions, definedGlobals, externalGlobals, importedSymbols, dependencies, targetDataLayout);
+        return new LLVMParserResult(runtime, definedFunctions, externalFunctions, definedGlobals, externalGlobals, importedSymbols, targetDataLayout);
     }
 
     private void defineGlobals(List<GlobalVariable> globals, List<GlobalVariable> definedGlobals, List<GlobalVariable> externalGlobals, List<String> importedSymbols) {
@@ -152,14 +152,14 @@ public final class LLVMParser {
         LazyToTruffleConverterImpl lazyConverter = new LazyToTruffleConverterImpl(runtime, functionDefinition, source, model.getFunctionParser(functionDefinition),
                         model.getFunctionProcessor(), dataLayout);
         Function function = new LazyLLVMIRFunction(lazyConverter);
-        LLVMFunction descriptor = LLVMFunction.create(functionSymbol.getName(), library, function, functionSymbol.getType(), runtime.getBitcodeID(), functionSymbol.getIndex());
-        runtime.getFileScope().register(descriptor);
+        LLVMFunction llvmFunction = LLVMFunction.create(functionSymbol.getName(), library, function, functionSymbol.getType(), runtime.getBitcodeID(), functionSymbol.getIndex());
+        runtime.getFileScope().register(llvmFunction);
 
         // handle the global scope
         if (functionSymbol.isExported()) {
             LLVMSymbol exportedDescriptor = runtime.getGlobalScope().get(functionSymbol.getName());
             if (exportedDescriptor == null) {
-                runtime.getGlobalScope().register(descriptor);
+                runtime.getGlobalScope().register(llvmFunction);
             } else if (exportedDescriptor.isFunction()) {
                 importedSymbols.add(functionSymbol.getName());
             } else {

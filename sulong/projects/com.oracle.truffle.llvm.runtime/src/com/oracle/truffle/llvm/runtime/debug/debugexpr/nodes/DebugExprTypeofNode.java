@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, Oracle and/or its affiliates.
+ * Copyright (c) 2019, 2020, Oracle and/or its affiliates.
  *
  * All rights reserved.
  *
@@ -31,7 +31,7 @@ package com.oracle.truffle.llvm.runtime.debug.debugexpr.nodes;
 
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.Scope;
-import com.oracle.truffle.api.frame.VirtualFrame;
+import com.oracle.truffle.api.dsl.Specialization;
 import com.oracle.truffle.api.interop.InteropLibrary;
 import com.oracle.truffle.api.interop.UnknownIdentifierException;
 import com.oracle.truffle.api.interop.UnsupportedMessageException;
@@ -41,7 +41,7 @@ import com.oracle.truffle.llvm.runtime.debug.debugexpr.parser.DebugExprType;
 import com.oracle.truffle.llvm.runtime.debug.type.LLVMSourceType;
 import com.oracle.truffle.llvm.runtime.nodes.api.LLVMExpressionNode;
 
-public class DebugExprTypeofNode extends LLVMExpressionNode {
+public abstract class DebugExprTypeofNode extends LLVMExpressionNode {
 
     private final String name;
     private Iterable<Scope> scopes;
@@ -52,6 +52,7 @@ public class DebugExprTypeofNode extends LLVMExpressionNode {
     }
 
     @TruffleBoundary
+    @Specialization
     public LLVMSourceType getLLVMSourceType() {
         InteropLibrary library = InteropLibrary.getFactory().getUncached();
         for (Scope scope : scopes) {
@@ -60,7 +61,7 @@ public class DebugExprTypeofNode extends LLVMExpressionNode {
                 if (library.isMemberReadable(vars, name)) {
                     Object member = library.readMember(vars, name);
                     LLVMDebuggerValue ldv = (LLVMDebuggerValue) member;
-                    Object metaObj = ldv.getMetaObject();
+                    Object metaObj = ldv.resolveMetaObject();
                     return (LLVMSourceType) metaObj;
                 }
 
@@ -85,10 +86,4 @@ public class DebugExprTypeofNode extends LLVMExpressionNode {
     public String getName() {
         return name;
     }
-
-    @Override
-    public Object executeGeneric(VirtualFrame frame) {
-        return getLLVMSourceType();
-    }
-
 }
