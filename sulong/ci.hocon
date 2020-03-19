@@ -168,7 +168,8 @@ builds += [
   ${sulong-gateTestLLVMorg-linux} { name: gate-sulong-gcc_c, run: [[mx, gate, --tags, "build,gcc_c"]], timelimit: "45:00" }
   ${sulong-gateTestLLVMorg-linux} { name: gate-sulong-gcc_cpp, run: [[mx, gate, --tags, "build,gcc_cpp"]] }
   ${sulong-gateTestLLVMorg-linux} ${requireGCC} { name: gate-sulong-gcc_fortran, run: [[mx, gate, --tags, "build,gcc_fortran"]] }
-  ${sulong-gateTest38-linux} ${requireGCC} { name: gate-sulong-basic_v38, run: [[mx, gate, --tags, "build,sulongBasic,nwcc,llvm"]] }
+  # No more testing on llvm 3.8 [GR-21735]
+  # ${sulong-gateTest38-linux} ${requireGCC} { name: gate-sulong-basic_v38, run: [[mx, gate, --tags, "build,sulongBasic,nwcc,llvm"]] }
   ${sulong-gateTest40-linux} ${requireGCC} { name: gate-sulong-basic_v40, run: [[mx, gate, --tags, "build,sulongBasic,nwcc,llvm"]] }
   ${sulong-gateTest60-linux} ${requireGCC} { name: gate-sulong-basic_v60, run: [[mx, gate, --tags, "build,sulongBasic,nwcc,llvm"]] }
   ${sulong-gateTest80-linux} ${requireGCC} { name: gate-sulong-basic_v80, run: [[mx, gate, --tags, "build,sulongBasic,nwcc,llvm"]] }
@@ -178,7 +179,7 @@ builds += [
 
   ${sulong-gateTestLLVMorg-linux} ${sulong-ruby-downstream-test} { name: gate-sulong-ruby-downstream }
 
-  ${sulong-gateTestLLVMorg-linux} ${sulong-labsjdk-ce-11-only} ${linux-aarch64} { name: gate-sulong-build_bundled-llvm-linux-aarch64, run: [[mx, gate, --tags, "build"]] }
+  ${sulong-gateTestLLVMorg-linux} ${sulong-labsjdk-ce-11-only} ${linux-aarch64} { name: gate-sulong_bundled-llvm-linux-aarch64, run: [[mx, gate, --tags, "build,sulong"]] }
   ${sulong-gateTestLLVMorg-linux} ${sulong-labsjdk-ce-11-only} { name: gate-sulong-build_bundled-llvm-linux-amd64-labsjdk-ce-11, run: [
     [mx, gate, --tags, "build"]
   ] ${sulong-test-toolchain} }
