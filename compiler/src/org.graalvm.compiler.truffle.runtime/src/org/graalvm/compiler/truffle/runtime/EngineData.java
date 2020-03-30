@@ -36,6 +36,7 @@ import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.Compi
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.CompilationThreshold;
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.CompileImmediately;
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.CompileOnly;
+import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.CompileFileOnly;
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.DisassembleOnly;
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.DisassemblyFormat;
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.FirstTierCompilationThreshold;
@@ -135,6 +136,7 @@ public final class EngineData {
     @CompilationFinal public boolean backgroundCompilation;
     @CompilationFinal public ExceptionAction compilationFailureAction;
     @CompilationFinal public String compileOnly;
+    @CompilationFinal public String compileFileOnly;
     @CompilationFinal public boolean callTargetStatistics;
     @CompilationFinal public boolean callTargetStatisticDetails;
     @CompilationFinal public boolean profilingEnabled;
@@ -178,6 +180,7 @@ public final class EngineData {
         // compilation options
         this.compilation = getPolyglotOptionValue(options, Compilation);
         this.compileOnly = getPolyglotOptionValue(options, CompileOnly);
+        this.compileFileOnly = getPolyglotOptionValue(options, CompileFileOnly);
         this.compileImmediately = getPolyglotOptionValue(options, CompileImmediately);
         this.multiTier = getPolyglotOptionValue(options, MultiTier);
 
@@ -198,7 +201,7 @@ public final class EngineData {
         this.statisticsListener = this.callTargetStatistics ? StatisticsListener.createEngineListener(GraalTruffleRuntime.getRuntime()) : null;
         this.profilingEnabled = getPolyglotOptionValue(options, Profiling);
         this.traceTransferToInterpreter = getPolyglotOptionValue(options, TraceTransferToInterpreter);
-        this.compilationPredicate = computeCompilationPredicate(compileOnly);
+        this.compilationPredicate = computeCompilationPredicateWithFile(compileOnly, compileFileOnly);
         this.disassemblePredicate = computeCompilationPredicate(disassembleOnly);
         this.compilationFailureAction = computeCompilationFailureAction(options);
         validateOptions();
@@ -259,12 +262,7 @@ public final class EngineData {
         }
     }
 
-    @SuppressFBWarnings(value = "", justification = "Cache that does not need to use equals to compare.")
-    private Predicate<RootNode> computeCompilationPredicate(String expression) {
-        if (expression == null) {
-            return rootNode -> true;
-        }
-
+    private boolean matchesCompilePattern(String expression, String name) {
         final ArrayList<String> includesList = new ArrayList<>();
         final ArrayList<String> excludesList = new ArrayList<>();
 
@@ -277,27 +275,46 @@ public final class EngineData {
             }
         }
 
+        boolean included = includesList.isEmpty();
+        if (name != null) {
+            for (int i = 0; !included && i < includesList.size(); i++) {
+                if (name.contains(includesList.get(i))) {
+                    included = true;
+                }
+            }
+        }
+        if (!included) {
+            return false;
+        }
+        if (name != null) {
+            for (String exclude : excludesList) {
+                if (name.contains(exclude)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    @SuppressFBWarnings(value = "", justification = "Cache that does not need to use equals to compare.")
+    private Predicate<RootNode> computeCompilationPredicate(String expression) {
+        if (expression == null) {
+            return rootNode -> true;
+        }
+
         return rootNode -> {
-            final String name = rootNode.getName();
-            boolean included = includesList.isEmpty();
-            if (name != null) {
-                for (int i = 0; !included && i < includesList.size(); i++) {
-                    if (name.contains(includesList.get(i))) {
-                        included = true;
-                    }
-                }
-            }
-            if (!included) {
-                return false;
-            }
-            if (name != null) {
-                for (String exclude : excludesList) {
-                    if (name.contains(exclude)) {
-                        return false;
-                    }
-                }
-            }
-            return true;
+            return matchesCompilePattern(expression, rootNode.getName());
+        };
+    }
+
+    @SuppressFBWarnings(value = "", justification = "Cache that does not need to use equals to compare.")
+    private Predicate<RootNode> computeCompilationPredicateWithFile(String methodExpression, String fileExpression) {
+        if (methodExpression == null && fileExpression == null) {
+            return rootNode -> true;
+        }
+
+        return rootNode -> {
+            return matchesCompilePattern(methodExpression, rootNode.getName()) && matchesCompilePattern(fileExpression, rootNode.getSourceName());
         };
     }
 

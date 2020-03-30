@@ -197,8 +197,11 @@ public final class PolyglotCompilerOptions {
     @Option(help = "Enable or disable Truffle compilation.", category = OptionCategory.INTERNAL)
     public static final OptionKey<Boolean> Compilation = new OptionKey<>(true);
 
-    @Option(help = "Restrict compilation to ','-separated list of includes (or excludes prefixed with '~').", category = OptionCategory.INTERNAL)
+    @Option(help = "Restrict compilation to certain method names. ','-separated list of includes (or excludes prefixed with '~').", category = OptionCategory.INTERNAL)
     public static final OptionKey<String> CompileOnly = new OptionKey<>(null, OptionType.defaultType(String.class));
+
+    @Option(help = "Restrict compilation to certain file names. ','-separated list of includes (or excludes prefixed with '~').", category = OptionCategory.INTERNAL)
+    public static final OptionKey<String> CompileFileOnly = new OptionKey<>(null, OptionType.defaultType(String.class));
 
     @Option(help = "Compile immediately to test Truffle compilation", category = OptionCategory.INTERNAL)
     public static final OptionKey<Boolean> CompileImmediately = new OptionKey<>(false);
