@@ -263,6 +263,10 @@ public final class EngineData {
     }
 
     private boolean matchesCompilePattern(String expression, String name) {
+        if (expression == null) {
+            return true;
+        }
+
         final ArrayList<String> includesList = new ArrayList<>();
         final ArrayList<String> excludesList = new ArrayList<>();
 
