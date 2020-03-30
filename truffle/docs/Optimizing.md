@@ -76,6 +76,8 @@ To make best use of the former options, limit what is compiled to the methods th
 
 `--engine.CompileOnly=foo` restricts compilation to methods with `foo` in their name. Use this in combination with returning a value or taking parameters to avoid code being compiled away.
 
+`--engine.CompileOnly=foo.rb` restricts compilation to files with `foo.rb` in their name.
+
 `--engine.CompileImmediately` compiles methods as soon as they are run.
 
 `--engine.BackgroundCompilation=false` compiles synchronously, which can simplify things.

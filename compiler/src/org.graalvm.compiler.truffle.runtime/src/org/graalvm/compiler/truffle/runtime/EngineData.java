@@ -71,6 +71,7 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 
 import com.oracle.truffle.api.nodes.RootNode;
+import com.oracle.truffle.api.source.SourceSection;
 import org.graalvm.compiler.truffle.options.PolyglotCompilerOptions;
 import org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.EngineModeEnum;
 import org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.ExceptionAction;
@@ -306,9 +307,7 @@ public final class EngineData {
             return rootNode -> true;
         }
 
-        return rootNode -> {
-            return matchesCompilePattern(expression, rootNode.getName());
-        };
+        return rootNode -> matchesCompilePattern(expression, rootNode.getName());
     }
 
     @SuppressFBWarnings(value = "", justification = "Cache that does not need to use equals to compare.")
@@ -318,7 +317,21 @@ public final class EngineData {
         }
 
         return rootNode -> {
-            return matchesCompilePattern(methodExpression, rootNode.getName()) && matchesCompilePattern(fileExpression, rootNode.getSourceName());
+            if (!matchesCompilePattern(methodExpression, rootNode.getName())) {
+                return false;
+            }
+
+            if (fileExpression == null) {
+                return true;
+            }
+
+            final SourceSection sourceSection = rootNode.getSourceSection();
+
+            if (sourceSection == null) {
+                return false;
+            }
+
+            return matchesCompilePattern(fileExpression, sourceSection.getSource().getName());
         };
     }
 

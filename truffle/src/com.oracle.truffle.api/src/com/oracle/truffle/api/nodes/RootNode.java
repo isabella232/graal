@@ -221,9 +221,6 @@ public abstract class RootNode extends ExecutableNode {
         return null;
     }
 
-    public String getSourceName() {
-        return getSourceSection().getSource().getName();
-    }
     /**
      * Returns <code>true</code> if this root node should be considered internal and not be shown to
      * a guest language programmer. This method has effect on tools and guest language stack traces.
