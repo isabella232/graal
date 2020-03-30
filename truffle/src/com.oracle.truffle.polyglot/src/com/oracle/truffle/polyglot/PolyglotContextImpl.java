@@ -463,7 +463,6 @@ final class PolyglotContextImpl extends AbstractContextImpl implements com.oracl
         synchronized (this) {
             PolyglotThreadInfo threadInfo = getCurrentThreadInfo();
             checkClosed();
-            engine.checkState();
             assert threadInfo != null;
 
             threadInfo = threads.get(current);
@@ -908,6 +907,7 @@ final class PolyglotContextImpl extends AbstractContextImpl implements com.oracl
 
     @Override
     public Value asValue(Object hostValue) {
+        checkClosed();
         try {
             PolyglotLanguageContext targetLanguageContext;
             if (hostValue instanceof Value) {
