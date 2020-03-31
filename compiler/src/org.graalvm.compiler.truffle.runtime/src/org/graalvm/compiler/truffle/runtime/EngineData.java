@@ -36,6 +36,7 @@ import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.Compi
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.CompilationThreshold;
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.CompileImmediately;
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.CompileOnly;
+import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.CompileFileOnly;
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.DisassembleOnly;
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.DisassemblyFormat;
 import static org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.FirstTierCompilationThreshold;
@@ -70,6 +71,7 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 
 import com.oracle.truffle.api.nodes.RootNode;
+import com.oracle.truffle.api.source.SourceSection;
 import org.graalvm.compiler.truffle.options.PolyglotCompilerOptions;
 import org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.EngineModeEnum;
 import org.graalvm.compiler.truffle.options.PolyglotCompilerOptions.ExceptionAction;
@@ -135,6 +137,7 @@ public final class EngineData {
     @CompilationFinal public boolean backgroundCompilation;
     @CompilationFinal public ExceptionAction compilationFailureAction;
     @CompilationFinal public String compileOnly;
+    @CompilationFinal public String compileFileOnly;
     @CompilationFinal public boolean callTargetStatistics;
     @CompilationFinal public boolean callTargetStatisticDetails;
     @CompilationFinal public boolean profilingEnabled;
@@ -178,6 +181,7 @@ public final class EngineData {
         // compilation options
         this.compilation = getPolyglotOptionValue(options, Compilation);
         this.compileOnly = getPolyglotOptionValue(options, CompileOnly);
+        this.compileFileOnly = getPolyglotOptionValue(options, CompileFileOnly);
         this.compileImmediately = getPolyglotOptionValue(options, CompileImmediately);
         this.multiTier = getPolyglotOptionValue(options, MultiTier);
 
@@ -198,7 +202,7 @@ public final class EngineData {
         this.statisticsListener = this.callTargetStatistics ? StatisticsListener.createEngineListener(GraalTruffleRuntime.getRuntime()) : null;
         this.profilingEnabled = getPolyglotOptionValue(options, Profiling);
         this.traceTransferToInterpreter = getPolyglotOptionValue(options, TraceTransferToInterpreter);
-        this.compilationPredicate = computeCompilationPredicate(compileOnly);
+        this.compilationPredicate = computeCompilationPredicateWithFile(compileOnly, compileFileOnly);
         this.disassemblePredicate = computeCompilationPredicate(disassembleOnly);
         this.compilationFailureAction = computeCompilationFailureAction(options);
         validateOptions();
@@ -259,10 +263,9 @@ public final class EngineData {
         }
     }
 
-    @SuppressFBWarnings(value = "", justification = "Cache that does not need to use equals to compare.")
-    private Predicate<RootNode> computeCompilationPredicate(String expression) {
+    private boolean matchesCompilePattern(String expression, String name) {
         if (expression == null) {
-            return rootNode -> true;
+            return true;
         }
 
         final ArrayList<String> includesList = new ArrayList<>();
@@ -277,27 +280,58 @@ public final class EngineData {
             }
         }
 
-        return rootNode -> {
-            final String name = rootNode.getName();
-            boolean included = includesList.isEmpty();
-            if (name != null) {
-                for (int i = 0; !included && i < includesList.size(); i++) {
-                    if (name.contains(includesList.get(i))) {
-                        included = true;
-                    }
+        boolean included = includesList.isEmpty();
+        if (name != null) {
+            for (int i = 0; !included && i < includesList.size(); i++) {
+                if (name.contains(includesList.get(i))) {
+                    included = true;
                 }
             }
-            if (!included) {
+        }
+        if (!included) {
+            return false;
+        }
+        if (name != null) {
+            for (String exclude : excludesList) {
+                if (name.contains(exclude)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    @SuppressFBWarnings(value = "", justification = "Cache that does not need to use equals to compare.")
+    private Predicate<RootNode> computeCompilationPredicate(String expression) {
+        if (expression == null) {
+            return rootNode -> true;
+        }
+
+        return rootNode -> matchesCompilePattern(expression, rootNode.getName());
+    }
+
+    @SuppressFBWarnings(value = "", justification = "Cache that does not need to use equals to compare.")
+    private Predicate<RootNode> computeCompilationPredicateWithFile(String methodExpression, String fileExpression) {
+        if (methodExpression == null && fileExpression == null) {
+            return rootNode -> true;
+        }
+
+        return rootNode -> {
+            if (!matchesCompilePattern(methodExpression, rootNode.getName())) {
                 return false;
             }
-            if (name != null) {
-                for (String exclude : excludesList) {
-                    if (name.contains(exclude)) {
-                        return false;
-                    }
-                }
+
+            if (fileExpression == null) {
+                return true;
             }
-            return true;
+
+            final SourceSection sourceSection = rootNode.getSourceSection();
+
+            if (sourceSection == null) {
+                return false;
+            }
+
+            return matchesCompilePattern(fileExpression, sourceSection.getSource().getName());
         };
     }
 
