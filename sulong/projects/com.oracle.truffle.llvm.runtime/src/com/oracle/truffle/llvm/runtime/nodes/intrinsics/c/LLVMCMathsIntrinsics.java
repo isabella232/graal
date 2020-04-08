@@ -263,6 +263,7 @@ public abstract class LLVMCMathsIntrinsics {
 
         @Specialization
         protected LLVM80BitFloat doIntrinsic(LLVM80BitFloat value) {
+            // imprecise, double value has 64 bits.
             double result = doIntrinsic(value.getDoubleValue());
             return LLVM80BitFloat.fromDouble(result);
         }
