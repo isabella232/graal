@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012, 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012, 2020, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -813,6 +813,10 @@ public class CompileQueue {
         return gbConf;
     }
 
+    protected boolean containsStackValueNode(HostedMethod method) {
+        return universe.getBigBang().getHostVM().containsStackValueNode(method.wrapped);
+    }
+
     protected boolean canBeUsedForInlining(Invoke invoke) {
         HostedMethod caller = (HostedMethod) invoke.asNode().graph().method();
         HostedMethod callee = (HostedMethod) invoke.callTarget().targetMethod();
@@ -824,7 +828,7 @@ public class CompileQueue {
              */
             return false;
         }
-        if (canDeoptForTesting(caller) && universe.getMethodsWithStackValues().contains(callee.wrapped)) {
+        if (canDeoptForTesting(caller) && containsStackValueNode(callee)) {
             /*
              * We must not inline a method that has stack values and can be deoptimized.
              */
@@ -1125,7 +1129,7 @@ public class CompileQueue {
             /* Deoptimization runtime cannot fill the callee saved registers. */
             return false;
         }
-        if (universe.getMethodsWithStackValues().contains(method.wrapped)) {
+        if (containsStackValueNode(method)) {
             return false;
         }
 
