@@ -431,6 +431,14 @@ public abstract class AbstractHotSpotTruffleRuntime extends GraalTruffleRuntime 
         return profilingEnabled;
     }
 
+    public void shutdownCompilerThreads() {
+        throw new RuntimeException("Cannot shutdown compiler threads on HotSpotTruffleRuntime");
+    }
+
+    public void startCompilerThreads() {
+        throw new RuntimeException("Cannot start compiler threads on HotSpotTruffleRuntime");
+    }
+
     @Override
     protected JavaConstant forObject(final Object object) {
         final HotSpotConstantReflectionProvider constantReflection = (HotSpotConstantReflectionProvider) HotSpotJVMCIRuntime.runtime().getHostJVMCIBackend().getConstantReflection();

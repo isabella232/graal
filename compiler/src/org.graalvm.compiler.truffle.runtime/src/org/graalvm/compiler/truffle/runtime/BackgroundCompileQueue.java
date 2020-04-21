@@ -38,6 +38,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import org.graalvm.compiler.truffle.common.TruffleCompilationTask;
 import org.graalvm.compiler.truffle.options.PolyglotCompilerOptions;
+import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 
 /**
  * The compilation queue accepts compilation requests, and schedules compilations.
@@ -128,6 +129,10 @@ public class BackgroundCompileQueue {
         }
     }
 
+    public boolean getShutdown() {
+        return shutdown;
+    }
+
     public void shutdownAndAwaitTermination(long timeout) {
         final ExecutorService threadPool;
         synchronized (this) {
@@ -143,6 +148,21 @@ public class BackgroundCompileQueue {
             threadPool.awaitTermination(timeout, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             throw new RuntimeException("Could not terminate compiler threads. Check if there are runaway compilations that don't handle Thread#interrupt.", e);
+        }
+    }
+
+    @TruffleBoundary
+    public void shutdownCompilerThreads() {
+        final ExecutorService threadPool;
+        synchronized (this) {
+            threadPool = compilationExecutorService;
+            if (threadPool == null) {
+                shutdown = true;
+                return;
+            }
+
+            threadPool.shutdownNow();
+            shutdown = true;
         }
     }
 

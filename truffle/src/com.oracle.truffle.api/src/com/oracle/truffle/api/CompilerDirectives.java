@@ -182,6 +182,22 @@ public final class CompilerDirectives {
     }
 
     /**
+     * Directive for the compiler to gently shutdown any compiler threads.
+     * @since  or earlier
+     */
+    public static void shutdownCompilerThreads() {
+        Truffle.getRuntime().shutdownCompilerThreads();
+    }
+
+    /**
+     * Directive for the compiler to start compiler threads.
+     * @since  or earlier
+     */
+    public static void startCompilerThreads() {
+        Truffle.getRuntime().startCompilerThreads();
+    }
+
+    /**
      * Injects a probability for the given condition into the probability information of the
      * immediately succeeding branch instruction for the condition. The probability must be a value
      * between 0.0 and 1.0 (inclusive). The condition should not be a combined condition.
