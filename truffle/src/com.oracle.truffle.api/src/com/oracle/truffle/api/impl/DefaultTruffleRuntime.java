@@ -301,11 +301,11 @@ public final class DefaultTruffleRuntime implements TruffleRuntime {
         return false;
     }
 
-    public void shutdownCompilerThreads() {
+    public boolean shutdownCompilerThreads() {
         throw new RuntimeException("Cannot shutdown compiler threads on DefaultTruffleRuntime");
     }
 
-    public void startCompilerThreads() {
+    public boolean startCompilerThreads() {
         throw new RuntimeException("Cannot start compiler threads on DefaultTruffleRuntime");
     }
 

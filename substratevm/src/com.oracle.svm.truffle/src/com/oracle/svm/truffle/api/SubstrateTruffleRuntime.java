@@ -260,13 +260,21 @@ public final class SubstrateTruffleRuntime extends GraalTruffleRuntime {
         return profilingEnabled;
     }
 
-    public void shutdownCompilerThreads() {
-        getCompileQueue().shutdownCompilerThreads();
+    public boolean shutdownCompilerThreads() {
+        if (compileQueue.getShutdown()) {
+            return false;
+        } else {
+            compileQueue.shutdownCompilerThreads();
+            return true;
+        }
     }
 
-    public void startCompilerThreads() {
+    public boolean startCompilerThreads() {
         if (compileQueue.getShutdown()) {
             compileQueue = TruffleFeature.getSupport().createBackgroundCompileQueue(this);
+            return true;
+        } else {
+            return false;
         }
     }
 
