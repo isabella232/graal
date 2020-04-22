@@ -301,6 +301,14 @@ public final class DefaultTruffleRuntime implements TruffleRuntime {
         return false;
     }
 
+    public boolean shutdownCompilerThreads() {
+        throw new RuntimeException("Cannot shutdown compiler threads on DefaultTruffleRuntime");
+    }
+
+    public boolean startCompilerThreads() {
+        throw new RuntimeException("Cannot start compiler threads on DefaultTruffleRuntime");
+    }
+
     private static class DefaultFrameInstance implements FrameInstance {
 
         private final CallTarget target;
