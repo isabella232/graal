@@ -217,6 +217,9 @@ public interface TruffleRuntime {
      */
     boolean isProfilingEnabled();
 
+    int fork();
+
     boolean shutdownCompilerThreads();
+
     boolean startCompilerThreads();
 }

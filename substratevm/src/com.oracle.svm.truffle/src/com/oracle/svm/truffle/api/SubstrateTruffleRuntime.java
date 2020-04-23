@@ -56,6 +56,7 @@ import org.graalvm.compiler.truffle.runtime.TruffleRuntimeOptions;
 import org.graalvm.nativeimage.Platform;
 import org.graalvm.nativeimage.Platform.HOSTED_ONLY;
 import org.graalvm.nativeimage.Platforms;
+import org.graalvm.nativeimage.c.function.CFunction;
 
 import com.oracle.svm.core.SubstrateOptions;
 import com.oracle.svm.core.SubstrateUtil;
@@ -73,12 +74,18 @@ import com.oracle.svm.hosted.c.GraalAccess;
 import com.oracle.svm.truffle.TruffleFeature;
 import com.oracle.truffle.api.CompilerAsserts;
 import com.oracle.truffle.api.nodes.RootNode;
+import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 
 import jdk.vm.ci.code.stack.StackIntrospection;
 import jdk.vm.ci.meta.JavaConstant;
 import jdk.vm.ci.meta.MetaAccessProvider;
 import jdk.vm.ci.meta.ResolvedJavaMethod;
 import jdk.vm.ci.meta.SpeculationLog;
+
+
+import java.lang.ref.PhantomReference;
+import java.lang.ref.ReferenceQueue;
+import java.util.concurrent.atomic.AtomicReference;
 
 class SubstateTruffleOptions {
 
@@ -260,6 +267,20 @@ public final class SubstrateTruffleRuntime extends GraalTruffleRuntime {
         return profilingEnabled;
     }
 
+    @TruffleBoundary
+    @Override
+    public int fork() {
+        shutdownCompilerThreads();
+        int pid = Unistd.fork();
+        startCompilerThreads();
+        ensureGCThreadRunning();
+        return pid;
+    }
+
+    private void ensureGCThreadRunning(){
+        NativeAllocation.ensureGCThreadRunning();
+    }
+
     public boolean shutdownCompilerThreads() {
         if (compileQueue.getShutdown()) {
             return false;
@@ -426,5 +447,82 @@ public final class SubstrateTruffleRuntime extends GraalTruffleRuntime {
     @Override
     public JavaConstant getCallTargetForCallNode(JavaConstant callNodeConstant) {
         return TruffleFeature.getSupport().getCallTargetForCallNode(callNodeConstant);
+    }
+}
+
+class Unistd {
+    /**
+     * Clone the calling process, creating an exact copy. Return -1 for errors, 0 to the new
+     * process, and the process ID of the new process to the old process.
+     */
+    @CFunction
+    public static native int fork();
+}
+
+
+// Copied from com.oracle.truffle.nfi.impl.NativeAllocation
+class NativeAllocation extends PhantomReference<Object> {
+
+    public abstract static class Destructor {
+
+        protected abstract void destroy();
+    }
+
+    public static final class Queue {
+
+        private synchronized void remove(NativeAllocation allocation) {
+            assert allocation.queue == this;
+            allocation.prev.next = allocation.next;
+            allocation.next.prev = allocation.prev;
+
+            allocation.next = null;
+            allocation.prev = null;
+        }
+    }
+
+    private static final ReferenceQueue<Object> refQueue = new ReferenceQueue<>();
+
+    private final Destructor destructor;
+
+    private NativeAllocation prev;
+    private NativeAllocation next;
+
+    private final Queue queue;
+
+    private NativeAllocation(Object referent, Destructor destructor, Queue queue) {
+        super(referent, refQueue);
+        this.destructor = destructor;
+        this.queue = queue;
+    }
+
+    private static final AtomicReference<Thread> gcThread = new AtomicReference<>(null);
+
+    static void ensureGCThreadRunning() {
+        Thread thread = gcThread.get();
+        if (thread == null) {
+            thread = new Thread(new Runnable() {
+
+                @Override
+                public void run() {
+                    try {
+                        for (;;) {
+                            NativeAllocation alloc = (NativeAllocation) refQueue.remove();
+                            alloc.queue.remove(alloc);
+                            alloc.destructor.destroy();
+                        }
+                    } catch (InterruptedException ex) {
+                        /* Happens on isolate tear down. We simply finish running this thread. */
+                    }
+                }
+            }, "nfi-gc");
+            if (gcThread.compareAndSet(null, thread)) {
+                thread.setDaemon(true);
+                thread.start();
+            } else {
+                Thread other = gcThread.get();
+                // nothing to do, another thread already started the GC thread
+                assert other != null && other != thread;
+            }
+        }
     }
 }

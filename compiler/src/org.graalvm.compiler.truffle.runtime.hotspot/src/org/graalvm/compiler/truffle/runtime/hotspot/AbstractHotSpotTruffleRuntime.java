@@ -431,6 +431,11 @@ public abstract class AbstractHotSpotTruffleRuntime extends GraalTruffleRuntime 
         return profilingEnabled;
     }
 
+
+    public int fork() {
+        throw new RuntimeException("Forking not available on HotSpot TruffleRuntime");
+    }
+
     public boolean shutdownCompilerThreads() {
         throw new RuntimeException("Cannot shutdown compiler threads on HotSpotTruffleRuntime");
     }

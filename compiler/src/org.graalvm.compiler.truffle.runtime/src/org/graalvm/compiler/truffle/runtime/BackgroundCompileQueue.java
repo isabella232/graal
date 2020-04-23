@@ -36,6 +36,8 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
+import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
+
 import org.graalvm.compiler.truffle.common.TruffleCompilationTask;
 import org.graalvm.compiler.truffle.options.PolyglotCompilerOptions;
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;

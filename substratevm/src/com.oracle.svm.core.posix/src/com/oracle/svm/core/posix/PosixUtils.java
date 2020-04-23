@@ -150,6 +150,10 @@ public class PosixUtils {
         return Unistd.getpid();
     }
 
+    public static int fork() {
+        return Unistd.fork();
+    }
+
     @Platforms(Platform.HOSTED_ONLY.class)
     private static final class ProcessNameProvider implements Function<TargetClass, String> {
         @Override

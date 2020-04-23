@@ -301,6 +301,10 @@ public final class DefaultTruffleRuntime implements TruffleRuntime {
         return false;
     }
 
+    public int fork() {
+        throw new RuntimeException("Forking not available on DefaultTruffleRuntime");
+    }
+
     public boolean shutdownCompilerThreads() {
         throw new RuntimeException("Cannot shutdown compiler threads on DefaultTruffleRuntime");
     }
